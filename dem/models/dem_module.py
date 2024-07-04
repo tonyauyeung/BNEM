@@ -521,6 +521,8 @@ class DEMLitModule(LightningModule):
         )
         aug_output = cnf.integrate(aug_samples)[-1]
         x_1, logdetjac = aug_output[..., :-1], aug_output[..., -1]
+        if not cnf.is_diffusion:
+            logdetjac = -logdetjac
         log_p_1 = prior.log_prob(x_1)
         log_p_0 = log_p_1 + logdetjac
         nll = -log_p_0
@@ -677,7 +679,6 @@ class DEMLitModule(LightningModule):
             data_set = self.energy_function.sample_test_set(self.eval_batch_size)
             generated_samples, _ = self.buffer.get_last_n_inserted(self.eval_batch_size)
         
-        data_set = self.energy_function.normalize(data_set)
         bins = (200, ) * self.energy_function.dimensionality
         generated_samples = self.energy_function.unnormalize(generated_samples)
         all_data = torch.cat([data_set, generated_samples], dim=0)
