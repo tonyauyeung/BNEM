@@ -19,4 +19,6 @@ task_name: "eval"
 tags: ["dev"]
 
 # passing checkpoint path is necessary for evaluation
-ckpt_path: ???
+ckpt_path: "./dem_results/logs/train/runs/2024-06-28_12-48-40/dem/ud9z93qf/checkpoints/epoch=999-step=100000.ckpt"
+
+

@@ -42,13 +42,11 @@ num_integration_steps: 1000
 nll_integration_method: dopri5
 tol: 1e-5
 
-nll_with_cfm: false
 nll_with_dem: true
 nll_on_buffer: false
 # compute the nll on the train data
 # this is in addition to buffer and test
 compute_nll_on_train_data: false
-logz_with_cfm: false
 
 cfm_sigma: 0.0
 cfm_prior_std: ${energy.data_normalization_factor}
@@ -69,8 +67,7 @@ cfm_loss_weight: 1.0
 use_ema: false
 use_exact_likelihood: True
 
-# train cfm only on train data and not dem
-debug_use_train_data: false
+
 
 # initialize the buffer with samples from the prior
 init_from_prior: false
@@ -83,3 +80,10 @@ num_samples_to_save: 100000
 
 negative_time: false
 num_negative_time_steps: 100
+
+
+#turn off the below 3 config for eval mode
+nll_with_cfm: false
+# train cfm only on train data and not dem
+debug_use_train_data: false
+logz_with_cfm: false

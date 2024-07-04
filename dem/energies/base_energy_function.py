@@ -18,15 +18,16 @@ class BaseEnergyFunction(ABC):
     ):
         self._dimensionality = dimensionality
 
-        self._test_set = self.setup_test_set()
-        self._val_set = self.setup_val_set()
-        self._train_set = None
 
         self.normalization_min = normalization_min
         self.normalization_max = normalization_max
 
         self._is_molecule = is_molecule
 
+        self._test_set = self.setup_test_set()
+        self._val_set = self.setup_val_set()
+        self._train_set = self.setup_train_set()
+        
     def setup_test_set(self) -> Optional[torch.Tensor]:
         return None
 

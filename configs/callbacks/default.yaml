@@ -3,6 +3,7 @@ defaults:
   - model_summary
   - rich_progress_bar
   - _self_
+  - early_stopping
 
 model_checkpoint:
   dirpath: ${paths.output_dir}/checkpoints

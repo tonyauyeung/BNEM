@@ -2,6 +2,7 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import torch
+import numpy as np
 from fab.target_distributions import gmm
 from fab.utils.plotting import plot_contours, plot_marginal_pair
 from lightning.pytorch.loggers import WandbLogger
@@ -27,6 +28,8 @@ class GMM(BaseEnergyFunction):
         train_set_size=100000,
         test_set_size=2000,
         val_set_size=2000,
+        data_path_train=None,
+        data_path_val=None,
     ):
         use_gpu = device != "cpu"
         torch.manual_seed(0)  # seed of 0 for GMM problem
@@ -50,14 +53,18 @@ class GMM(BaseEnergyFunction):
         self.train_set_size = train_set_size
         self.test_set_size = test_set_size
         self.val_set_size = val_set_size
+        
+        self.data_path_train = data_path_train
+        self.data_path_val = data_path_val
 
         self.name = "gmm"
-
+        
         super().__init__(
             dimensionality=dimensionality,
             normalization_min=-data_normalization_factor,
             normalization_max=data_normalization_factor,
         )
+
 
     def setup_test_set(self):
         # test_sample = self.gmm.sample((self.test_set_size,))
@@ -65,11 +72,25 @@ class GMM(BaseEnergyFunction):
         return self.gmm.test_set
 
     def setup_train_set(self):
-        train_samples = self.gmm.sample((self.train_set_size,))
-        return self.normalize(train_samples)
+        if self.data_path_train is not None:
+            if self.data_path_train[-3:] == "npy":
+                train_samples = torch.tensor(np.load(self.data_path_train))
+            else:
+                train_samples = torch.load(self.data_path_train)
+            train_samples = self.unnormalize(train_samples)
+        else:
+            train_samples = self.gmm.sample((self.train_set_size,))
+        return train_samples
 
     def setup_val_set(self):
-        val_samples = self.gmm.sample((self.val_set_size,))
+        if self.data_path_val is not None:
+            if self.data_path_val[-3:] == "npy":
+                val_samples = torch.tensor(np.load(self.data_path_val))
+            else:
+                val_samples = torch.load(self.data_path_val)
+            val_samples = self.unnormalize(val_samples)
+        else:
+            val_samples = self.gmm.sample((self.val_set_size,))
         return val_samples
 
     def __call__(self, samples: torch.Tensor) -> torch.Tensor:
