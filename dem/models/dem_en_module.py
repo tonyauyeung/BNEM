@@ -7,6 +7,7 @@ from functools import partial
 from .dem_module import *
 from .components.energy_net_wrapper import EnergyNet
 from .components.score_estimator import estimate_grad_Rt
+from .components.ais import ais
 
 
 class ENERGY_DEMLitModule(DEMLitModule):
@@ -56,6 +57,8 @@ class ENERGY_DEMLitModule(DEMLitModule):
         version=1,
         negative_time=False,
         num_negative_time_steps=100,
+        ais_steps: int = 5,
+        ais_dt: float = 0.1,
         t0_regulizer_weight=0.1,
     ) -> None:
             
@@ -105,6 +108,8 @@ class ENERGY_DEMLitModule(DEMLitModule):
                 version=version,
                 negative_time=negative_time,
                 num_negative_time_steps=num_negative_time_steps,
+                ais_steps=ais_steps,
+                ais_dt=ais_dt,
             )
             self.t0_regulizer_weight = t0_regulizer_weight
             
@@ -118,13 +123,24 @@ class ENERGY_DEMLitModule(DEMLitModule):
     
     def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor) -> torch.Tensor:
         #clean samples is a placeholder for training on t=0 as regularizer
-        estimated_score = estimate_grad_Rt(
-            times,
-            samples,
-            self.energy_function,
-            self.noise_schedule,
-            num_mc_samples=self.num_estimator_mc_samples,
-        )
+        if self.ais_steps == 0:
+            estimated_score = estimate_grad_Rt(
+                times,
+                samples,
+                self.energy_function,
+                self.noise_schedule,
+                num_mc_samples=self.num_estimator_mc_samples,
+            )
+        else:
+            estimated_score = ais(
+                samples,
+                times,
+                self.num_estimator_mc_samples,
+                self.ais_steps,
+                self.noise_schedule,
+                self.energy_function,
+                dt=self.ais_dt,
+            )[1]
 
         if self.clipper is not None and self.clipper.should_clip_scores:
             if self.energy_function.is_molecule:

@@ -58,6 +58,8 @@ class ENDEMLitModule(DEMLitModule):
         version=1,
         negative_time=False,
         num_negative_time_steps=100,
+        ais_steps: int = 5,
+        ais_dt: float = 0.1,
         t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         epsilon_train=1e-4,
@@ -109,6 +111,8 @@ class ENDEMLitModule(DEMLitModule):
                 version=version,
                 negative_time=negative_time,
                 num_negative_time_steps=num_negative_time_steps,
+                ais_steps=ais_steps,
+                ais_dt=ais_dt,
             )
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
@@ -123,12 +127,18 @@ class ENDEMLitModule(DEMLitModule):
         return self.net(t, x, with_grad=with_grad)
     
     def energy_estimator(self, xt, t, num_samples):
+        if self.ais_steps > 0: 
+            return ais(xt, t, 
+                       num_samples, self.ais_steps, 
+                       self.noise_schedule, self.energy_function, 
+                       dt=self.ais_dt)
         sigmas = self.noise_schedule.h(t).unsqueeze(1)
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
         x0_t = noise * sigmas.unsqueeze(-1) + xt.unsqueeze(1)
         energy_est = torch.logsumexp(self.energy_function(x0_t), dim=1) - torch.log(torch.tensor(num_samples)).to(xt.device)
         return energy_est
+            
     
     
     def bootstrap_energy_estimator(

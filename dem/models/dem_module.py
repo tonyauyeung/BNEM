@@ -32,6 +32,7 @@ from .components.score_estimator import estimate_grad_Rt, wrap_for_richardsons
 from .components.score_scaler import BaseScoreScaler
 from .components.sde_integration import integrate_sde
 from .components.sdes import VEReverseSDE
+from .components.ais import ais
 
 
 def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
@@ -144,6 +145,8 @@ class DEMLitModule(LightningModule):
         version=1,
         negative_time=False,
         num_negative_time_steps=100,
+        ais_steps: int = 5,
+        ais_dt: float = 0.1,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -200,6 +203,9 @@ class DEMLitModule(LightningModule):
             rtol=tol,
         )
 
+        self.ais_steps = ais_steps
+        self.ais_dt = ais_dt
+        
         self.nll_with_cfm = nll_with_cfm
         self.nll_with_dem = nll_with_dem
         self.nll_on_buffer = nll_on_buffer
@@ -350,13 +356,24 @@ class DEMLitModule(LightningModule):
 
     def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor) -> torch.Tensor:
         #clean samples is a placeholder for training on t=0 as regularizer
-        estimated_score = estimate_grad_Rt(
-            times,
-            samples,
-            self.energy_function,
-            self.noise_schedule,
-            num_mc_samples=self.num_estimator_mc_samples,
-        )
+        if self.ais_steps == 0:
+            estimated_score = estimate_grad_Rt(
+                times,
+                samples,
+                self.energy_function,
+                self.noise_schedule,
+                num_mc_samples=self.num_estimator_mc_samples,
+            )
+        else:
+            estimated_score = ais(
+                samples,
+                times,
+                self.num_estimator_mc_samples,
+                self.ais_steps,
+                self.noise_schedule,
+                self.energy_function,
+                dt=self.ais_dt,
+            )[1]
 
         if self.clipper is not None and self.clipper.should_clip_scores:
             if self.energy_function.is_molecule:
