@@ -4,7 +4,7 @@
 ```bash
 
 # create micromamba environment
-conda create -f environment.yaml
+conda env create -f environment.yaml
 conda activate dem
 
 # install requirements

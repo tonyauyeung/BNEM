@@ -1,4 +1,4 @@
-_target_: dem.models.dem_module.DEMLitModule
+_target_: dem.models.endem_module.ENDEMLitModule
 
 optimizer:
   _target_: torch.optim.Adam
@@ -13,10 +13,14 @@ scheduler:
   factor: 0.1
   patience: 10
 
+
+
 defaults:
   - net:
       - mlp
   - noise_schedule:
+      - geometric
+  - bootstrap_schedule:
       - geometric
 
 buffer:
@@ -42,7 +46,7 @@ num_integration_steps: 1000
 nll_integration_method: dopri5
 tol: 1e-5
 
-nll_with_dem: true
+nll_with_dem: false
 nll_on_buffer: false
 # compute the nll on the train data
 # this is in addition to buffer and test

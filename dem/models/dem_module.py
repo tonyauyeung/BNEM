@@ -348,7 +348,8 @@ class DEMLitModule(LightningModule):
         error_norms = (predicted_score - true_score).pow(2).mean(-1)
         return error_norms
 
-    def get_loss(self, times: torch.Tensor, samples: torch.Tensor) -> torch.Tensor:
+    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor) -> torch.Tensor:
+        #clean samples is a placeholder for training on t=0 as regularizer
         estimated_score = estimate_grad_Rt(
             times,
             samples,
@@ -406,7 +407,7 @@ class DEMLitModule(LightningModule):
                     self.energy_function.n_spatial_dim,
                 )
 
-            dem_loss = self.get_loss(times, noised_samples)
+            dem_loss = self.get_loss(times, noised_samples, iter_samples)
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
@@ -544,10 +545,8 @@ class DEMLitModule(LightningModule):
 
         self.buffer.add(self.last_samples, self.last_energies)
 
-        if self.hparams.debug_use_train_data:
-            prefix = "val"
-        else:
-            prefix = "test"
+        prefix = "val"
+
         
         self._log_energy_w2(prefix=prefix)
         self._log_data_w2(prefix=prefix)
@@ -721,12 +720,12 @@ class DEMLitModule(LightningModule):
         likelihood = torch.exp(-nll)
         energies = self.energy_function(samples)
 
-        w = torch.exp(energies) / likelihood
-        w = w / w.sum()
+        w = torch.exp(energies) / (likelihood + 1e-4)
+        w = w / (w.sum() + 1e-4)
         n = torch.tensor(energies.shape[0], device=w.device, dtype=w.dtype)
         self.log(
             f"{prefix}/{name}ess",
-            self.val_energy_w2((1/ n) / (w ** 2).sum()),
+            self.val_energy_w2((1/n) / (w ** 2).sum()),
             on_step=False,
             on_epoch=True,
             prog_bar=True,
@@ -807,7 +806,7 @@ class DEMLitModule(LightningModule):
                 self.energy_function.n_spatial_dim,
             )
 
-        loss = self.get_loss(times, noised_batch).mean(-1)
+        loss = self.get_loss(times, noised_batch, batch).mean(-1)
 
         # update and log metrics
         loss_metric = self.val_loss if prefix == "val" else self.test_loss
@@ -851,9 +850,11 @@ class DEMLitModule(LightningModule):
                 )
 
         if self.logz_with_cfm:
-            backwards_samples = self.cfm_cnf.generate(
-                self.cfm_prior.sample(self.eval_batch_size),
-            )[-1]
+            #backwards_samples = self.cfm_cnf.generate(
+            #    self.cfm_prior.sample(self.eval_batch_size),
+            #)[-1]
+            backwards_samples = self.energy_function.sample_test_set(self.eval_batch_size)
+            backwards_samples = self.energy_function.normalize(backwards_samples)
             # backwards_samples = self.generate_cfm_samples(self.eval_batch_size)
             self.compute_log_z(self.cfm_cnf, self.cfm_prior, backwards_samples, prefix, "")
             self.compute_ess(self.cfm_cnf, self.cfm_prior, backwards_samples, prefix, "")

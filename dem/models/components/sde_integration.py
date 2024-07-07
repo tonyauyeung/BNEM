@@ -96,7 +96,7 @@ def integrate_sde(
             )
             if energy_function.is_molecule:
                 x = remove_mean(x, energy_function.n_particles, energy_function.n_spatial_dim)
-            samples.append(x)
+            samples.append(x.detach())
 
     samples = torch.stack(samples)
     if negative_time:
