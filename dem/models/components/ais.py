@@ -38,7 +38,7 @@ def ais(xt, t, num_samples, L,
         xk = hmc(xk, log_prob_k, score_k, step_size=dt, num_steps=1, mass=1)
         # logw += -gmm(xk) / L
     # xt.requires_grad_(True)
-    energy = -torch.logsumexp(logw, dim=1) + np.log(num_samples)
+    energy = torch.logsumexp(logw, dim=1) - np.log(num_samples)
     score = torch.autograd.grad(-energy.sum(), inputs=xt)[0]
     xt.requires_grad_(False)
     return energy, score

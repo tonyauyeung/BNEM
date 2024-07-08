@@ -189,6 +189,8 @@ class ENDEMLitModule(DEMLitModule):
         error_norms = torch.abs(energy_est - predicted_energy)
         error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
 
+        print("checky: ", energy_est[:5], energy_clean[:5])
+        
         return (self.lambda_weighter(times) ** 0.5) * error_norms + \
             self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times))**0.5)
         
@@ -222,8 +224,6 @@ class ENDEMLitModule(DEMLitModule):
         error_norms = torch.abs(energy_est - predicted_energy)
         error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
         
-        error_norms = torch.clip(error_norms, max=5e2)
-        error_norms_t0 = torch.clip(error_norms, max=5e2)
         
         return self.lambda_weighter(times) ** 0.5 * error_norms + \
             self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times)) ** 0.5)
