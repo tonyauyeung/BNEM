@@ -57,7 +57,7 @@ class ENERGY_DEMLitModule(DEMLitModule):
         version=1,
         negative_time=False,
         num_negative_time_steps=100,
-        ais_steps: int = 5,
+        ais_steps: int = 0,
         ais_dt: float = 0.1,
         t0_regulizer_weight=0.1,
     ) -> None:

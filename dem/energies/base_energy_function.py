@@ -126,12 +126,16 @@ class BaseEnergyFunction(ABC):
         raise NotImplementedError
 
     def score(self, samples: torch.Tensor) -> torch.Tensor:
+        org_shape = None
         if len(samples.shape) > 2:
             org_shape = samples.shape
             samples = samples.reshape(-1, self.dimensionality)
         grad_fxn = torch.func.grad(self.__call__)
         vmapped_grad = torch.vmap(grad_fxn)
-        return vmapped_grad(samples).reshape(org_shape)
+        if org_shape is not None:
+            return vmapped_grad(samples).reshape(org_shape)
+        else:
+            return vmapped_grad(samples)
 
     def log_on_epoch_end(
         self,

@@ -131,7 +131,7 @@ class ENDEMLitModule(DEMLitModule):
             return ais(xt, t, 
                        num_samples, self.ais_steps, 
                        self.noise_schedule, self.energy_function, 
-                       dt=self.ais_dt)
+                       dt=self.ais_dt)[0].detach()
         sigmas = self.noise_schedule.h(t).unsqueeze(1)
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
@@ -186,12 +186,12 @@ class ENDEMLitModule(DEMLitModule):
         
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
-        error_norms = (energy_est - predicted_energy).pow(2)
-        error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
+        error_norms = torch.abs(energy_est - predicted_energy)
+        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
         
         
-        return self.lambda_weighter(times) * error_norms + \
-            self.t0_regulizer_weight * error_norms_t0 * self.lambda_weighter(torch.zeros_like(times))
+        return (self.lambda_weighter(times) ** 0.5) * error_norms + \
+            self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times))**0.5)
         
     
     def get_bootstrap_loss(self, times: torch.Tensor, 
