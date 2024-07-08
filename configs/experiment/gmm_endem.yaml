@@ -35,9 +35,9 @@ model:
   clipper:
     _target_: dem.models.components.clipper.Clipper
     should_clip_scores: True
-    should_clip_log_rewards: False
+    should_clip_log_rewards: True
     max_score_norm: 70
-    min_log_reward: null
+    min_log_reward: -100.
 
   lambda_weighter:
     _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
