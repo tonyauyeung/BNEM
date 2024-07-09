@@ -60,7 +60,7 @@ class ENDEMLitModule(DEMLitModule):
         num_negative_time_steps=100,
         ais_steps: int = 5,
         ais_dt: float = 0.1,
-        ais_warmup: int = 1e4,
+        ais_warmup: int = 5e3,
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 3e4,

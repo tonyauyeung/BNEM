@@ -147,7 +147,7 @@ class DEMLitModule(LightningModule):
         num_negative_time_steps=100,
         ais_steps: int = 5,
         ais_dt: float = 0.1,
-        ais_warmup: int = 1e1,
+        ais_warmup: int = 1e4,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
