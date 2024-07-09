@@ -121,7 +121,7 @@ class ENERGY_DEMLitModule(DEMLitModule):
         """
         return self.net(t, x, with_grad=with_grad)
     
-    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor) -> torch.Tensor:
+    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor, train=False) -> torch.Tensor:
         #clean samples is a placeholder for training on t=0 as regularizer
         if self.ais_steps == 0:
             estimated_score = estimate_grad_Rt(

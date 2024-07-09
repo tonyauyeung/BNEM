@@ -312,6 +312,8 @@ class DEMLitModule(LightningModule):
 
         self.diffusion_scale = diffusion_scale
         self.init_from_prior = init_from_prior
+        
+        self.iter_num = 0
 
     def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -354,7 +356,10 @@ class DEMLitModule(LightningModule):
         error_norms = (predicted_score - true_score).pow(2).mean(-1)
         return error_norms
 
-    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor) -> torch.Tensor:
+    def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor, train=False) -> torch.Tensor:
+        
+        if train:
+            self.iter_num += 1
         #clean samples is a placeholder for training on t=0 as regularizer
         if self.ais_steps == 0:
             estimated_score = estimate_grad_Rt(
@@ -525,7 +530,7 @@ class DEMLitModule(LightningModule):
         )
         if return_full_trajectory:
             return trajectory
-
+        
         return trajectory[-1]
 
     def compute_nll(
@@ -559,9 +564,7 @@ class DEMLitModule(LightningModule):
         else:
             self.last_samples = self.generate_samples(diffusion_scale=self.diffusion_scale)
             self.last_energies = self.energy_function(self.last_samples)
-
         self.buffer.add(self.last_samples, self.last_energies)
-
         prefix = "val"
 
         

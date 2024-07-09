@@ -21,7 +21,7 @@ def ais(xt, t, num_samples, L,
         noise_schedule, energy_func,
         dt=0.1):
     device = xt.device
-    sigmas = noise_schedule.h(t)[:, None].to(device)
+    sigmas = noise_schedule.h(t)[:, None].to(device).sqrt()
     data_shape = list(xt.shape)[1:]
     noise = torch.randn(xt.shape[0], num_samples, *data_shape, device=device)
     

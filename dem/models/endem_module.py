@@ -60,8 +60,9 @@ class ENDEMLitModule(DEMLitModule):
         num_negative_time_steps=100,
         ais_steps: int = 5,
         ais_dt: float = 0.1,
-        t0_regulizer_weight=0.1,
+        t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
+        bootstrap_warmup: int = 3e4,
         epsilon_train=1e-4,
     ) -> None:
             
@@ -117,7 +118,7 @@ class ENDEMLitModule(DEMLitModule):
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
             self.epsilon_train = epsilon_train
-            self.iter_num = 0
+            self.bootstrap_warmup = bootstrap_warmup
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -133,7 +134,7 @@ class ENDEMLitModule(DEMLitModule):
                        num_samples, self.ais_steps, 
                        self.noise_schedule, self.energy_function, 
                        dt=self.ais_dt)[0].detach()
-        sigmas = self.noise_schedule.h(t).unsqueeze(1)
+        sigmas = self.noise_schedule.h(t).unsqueeze(1).sqrt()
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
         x0_t = noise * sigmas.unsqueeze(-1) + xt.unsqueeze(1)
@@ -158,8 +159,8 @@ class ENDEMLitModule(DEMLitModule):
             """use the original estimator when u=0 --> t"""
             return self.energy_estimator(xt, t, num_samples)
         
-        sigma_t = self.noise_schedule.h(t).unsqueeze(1).to(xt.device)
-        sigma_u = self.noise_schedule.h(u).unsqueeze(1).to(xt.device)
+        sigma_t = self.noise_schedule.h(t).unsqueeze(1).to(xt.device).sqrt()
+        sigma_u = self.noise_schedule.h(u).unsqueeze(1).to(xt.device).sqrt()
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape, device=self.device)
     
@@ -178,7 +179,7 @@ class ENDEMLitModule(DEMLitModule):
                  train=False) -> torch.Tensor:
         
         self.iter_num += 1
-        if self.bootstrap_scheduler is not None and train and self.iter_num > 1e3:
+        if self.bootstrap_scheduler is not None and train and self.iter_num > self.bootstrap_warmup:
             return self.get_bootstrap_loss(times, samples, clean_samples)
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
@@ -188,12 +189,14 @@ class ENDEMLitModule(DEMLitModule):
         energy_clean = self.energy_function(clean_samples)
 
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
-
-        error_norms = torch.abs(energy_est - predicted_energy)
-        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
         
-        return (self.lambda_weighter(times) ** 0.5) * error_norms + \
-            self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times))**0.5)
+        
+        error_norms = torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
+        error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
+        
+        #return error_norms + self.t0_regulizer_weight * error_norms_t0
+        return self.lambda_weighter(times) ** 0.5 * error_norms  + \
+             error_norms_t0 * self.t0_regulizer_weight
         
     
     def get_bootstrap_loss(self, times: torch.Tensor, 
@@ -222,12 +225,15 @@ class ENDEMLitModule(DEMLitModule):
         
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
-        error_norms = torch.abs(energy_est - predicted_energy)
-        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
+        energy_est = (energy_est - energy_clean.min()) / (energy_clean.max() - energy_clean.min())
+        energy_clean = (energy_clean - energy_clean.min()) / (energy_clean.max() - energy_clean.min())
+        
+        error_norms = (energy_est - predicted_energy).pow(2).mean(-1)
+        error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2).mean(-1)
         
         
-        return self.lambda_weighter(t) ** 0.5 * error_norms + \
-            self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times)) ** 0.5)
+        return self.lambda_weighter(t) * error_norms + \
+            self.t0_regulizer_weight * error_norms_t0 * self.lambda_weighter(torch.zeros_like(times))
         
         
 

@@ -81,7 +81,7 @@ num_samples_to_save: 100000
 negative_time: false
 num_negative_time_steps: 100
 
-ais_steps: 5
+ais_steps: 0
 ais_dt: 0.1
 
 #turn on the below 3 config for eval mode
