@@ -117,6 +117,7 @@ class ENDEMLitModule(DEMLitModule):
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
             self.epsilon_train = epsilon_train
+            self.iter_num = 0
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -173,9 +174,11 @@ class ENDEMLitModule(DEMLitModule):
     
     def get_loss(self, times: torch.Tensor, 
                  samples: torch.Tensor, 
-                 clean_samples: torch.Tensor) -> torch.Tensor:
+                 clean_samples: torch.Tensor,
+                 train=False) -> torch.Tensor:
         
-        if self.bootstrap_scheduler is not None:
+        self.iter_num += 1
+        if self.bootstrap_scheduler is not None and train and self.iter_num > 1e3:
             return self.get_bootstrap_loss(times, samples, clean_samples)
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
@@ -188,8 +191,6 @@ class ENDEMLitModule(DEMLitModule):
 
         error_norms = torch.abs(energy_est - predicted_energy)
         error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
-
-        print("checky: ", energy_est[:5], energy_clean[:5])
         
         return (self.lambda_weighter(times) ** 0.5) * error_norms + \
             self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times))**0.5)
@@ -225,7 +226,7 @@ class ENDEMLitModule(DEMLitModule):
         error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
         
         
-        return self.lambda_weighter(times) ** 0.5 * error_norms + \
+        return self.lambda_weighter(t) ** 0.5 * error_norms + \
             self.t0_regulizer_weight * error_norms_t0 * (self.lambda_weighter(torch.zeros_like(times)) ** 0.5)
         
         

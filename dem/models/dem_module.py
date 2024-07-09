@@ -424,7 +424,7 @@ class DEMLitModule(LightningModule):
                     self.energy_function.n_spatial_dim,
                 )
 
-            dem_loss = self.get_loss(times, noised_samples, iter_samples)
+            dem_loss = self.get_loss(times, noised_samples, iter_samples, train=True)
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
             self.log_dict(
