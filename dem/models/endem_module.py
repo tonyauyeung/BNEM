@@ -63,7 +63,7 @@ class ENDEMLitModule(DEMLitModule):
         ais_warmup: int = 5e3,
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
-        bootstrap_warmup: int = 3e4,
+        bootstrap_warmup: int = 5e3,
         epsilon_train=1e-4,
     ) -> None:
             

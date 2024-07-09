@@ -67,7 +67,7 @@ cfm_loss_weight: 1.0
 use_ema: false
 use_exact_likelihood: True
 
-ais_steps: 10
+ais_steps: 0
 ais_dt: 0.1
 
 
