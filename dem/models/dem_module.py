@@ -206,6 +206,7 @@ class DEMLitModule(LightningModule):
 
         self.ais_steps = ais_steps
         self.ais_dt = ais_dt
+        self.ais_warmup = ais_warmup
         
         self.nll_with_cfm = nll_with_cfm
         self.nll_with_dem = nll_with_dem
