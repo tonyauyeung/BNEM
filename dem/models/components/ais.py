@@ -32,8 +32,8 @@ def ais(xt, t, num_samples, L,
     """compute log(w) for numerical stability"""
     for k in range(1, L + 1):
         """1-step HMC"""
-        logw += energy_func(xk).to(device) / L
-        log_prob_k = lambda x: k / L * energy_func(x) - 0.5 * torch.sum((x - xt.unsqueeze(1)) ** 2, dim=-1) / sigmas ** 2
+        logw += -energy_func(xk).to(device) / L
+        log_prob_k = lambda x: k / L * (-energy_func(x)) - 0.5 * torch.sum((x - xt.unsqueeze(1)) ** 2, dim=-1) / sigmas ** 2
         score_k = lambda x: k / L * energy_func.score(x) - (x - xt.unsqueeze(1)) / sigmas.unsqueeze(-1) ** 2
         xk = hmc(xk, log_prob_k, score_k, step_size=dt, num_steps=1, mass=1)
         # logw += -gmm(xk) / L

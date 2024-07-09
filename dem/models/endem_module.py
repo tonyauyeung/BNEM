@@ -208,8 +208,8 @@ class ENDEMLitModule(DEMLitModule):
         # we resample times for bootstrapping pairs
         t = torch.rand((samples.shape[0], ))
         i = self.bootstrap_scheduler.t_to_index(t)
-        i_tmp = i[torch.randint(i.shape[0], (1,))].item()
-        i = torch.full_like(i, i_tmp).long()
+        #i_tmp = i[torch.randint(i.shape[0], (1,))].item()
+        #i = torch.full_like(i, i_tmp).long()
         t = self.bootstrap_scheduler.sample_t(i)
         u = self.bootstrap_scheduler.sample_t(i - 1)
         t = torch.clamp(t,min=self.epsilon_train).float().to(samples.device)
@@ -227,15 +227,13 @@ class ENDEMLitModule(DEMLitModule):
         
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
-        energy_est = (energy_est - energy_clean.min()) / (energy_clean.max() - energy_clean.min())
-        energy_clean = (energy_clean - energy_clean.min()) / (energy_clean.max() - energy_clean.min())
         
-        error_norms = (energy_est - predicted_energy).pow(2).mean(-1)
-        error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2).mean(-1)
+        error_norms = torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
+        error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
         
-        
-        return self.lambda_weighter(t) * error_norms + \
-            self.t0_regulizer_weight * error_norms_t0 * self.lambda_weighter(torch.zeros_like(times))
+        #return error_norms + self.t0_regulizer_weight * error_norms_t0
+        return self.lambda_weighter(times) ** 0.5 * error_norms  + \
+             error_norms_t0 * self.t0_regulizer_weight
         
         
 
