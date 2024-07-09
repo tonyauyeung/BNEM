@@ -60,6 +60,7 @@ class ENDEMLitModule(DEMLitModule):
         num_negative_time_steps=100,
         ais_steps: int = 5,
         ais_dt: float = 0.1,
+        ais_warmup: int = 1e4,
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 3e4,
@@ -114,6 +115,7 @@ class ENDEMLitModule(DEMLitModule):
                 num_negative_time_steps=num_negative_time_steps,
                 ais_steps=ais_steps,
                 ais_dt=ais_dt,
+                ais_warmup=ais_warmup,
             )
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
@@ -129,7 +131,7 @@ class ENDEMLitModule(DEMLitModule):
         return self.net(t, x, with_grad=with_grad)
     
     def energy_estimator(self, xt, t, num_samples):
-        if self.ais_steps > 0: 
+        if self.ais_steps == 0 and self.iter_num < self.ais_warmup:
             return ais(xt, t, 
                        num_samples, self.ais_steps, 
                        self.noise_schedule, self.energy_function, 
