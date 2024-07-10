@@ -45,7 +45,7 @@ train: True
 test: True
 
 # simply provide checkpoint path to resume training
-ckpt_path: null
+ckpt_path: null #/home/bq216/codes/beidem/dem_results/logs/train/runs/2024-07-09_21-40-35/gmm_dem_clipsample/xdztr8o9/checkpoints/epoch=589-step=59000.ckpt
 
 # seed for random number generators in pytorch, numpy and python.random
 seed: null

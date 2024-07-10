@@ -63,7 +63,7 @@ class ENDEMLitModule(DEMLitModule):
         ais_warmup: int = 5e3,
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
-        bootstrap_warmup: int = 1000,
+        bootstrap_warmup: int = 0,
         epsilon_train=1e-4,
     ) -> None:
             
@@ -208,8 +208,8 @@ class ENDEMLitModule(DEMLitModule):
         # we resample times for bootstrapping pairs
         t = torch.rand((samples.shape[0], ))
         i = self.bootstrap_scheduler.t_to_index(t)
-        #i_tmp = i[torch.randint(i.shape[0], (1,))].item()
-        #i = torch.full_like(i, i_tmp).long()
+        i_tmp = i[torch.randint(i.shape[0], (1,))].item()
+        i = torch.full_like(i, i_tmp).long()
         t = self.bootstrap_scheduler.sample_t(i)
         u = self.bootstrap_scheduler.sample_t(i - 1)
         t = torch.clamp(t,min=self.epsilon_train).float().to(samples.device)
@@ -218,7 +218,7 @@ class ENDEMLitModule(DEMLitModule):
         val_model = copy.deepcopy(self.net).to(samples.device).eval()
         
         energy_est = self.bootstrap_energy_estimator(samples, t, u, 
-                                                     self.num_estimator_mc_samples, val_model)
+                                                     self.num_estimator_mc_samples//10, val_model)
         
         predicted_energy = self.net.forward_e(t, samples)
         
