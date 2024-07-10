@@ -63,7 +63,7 @@ class ENDEMLitModule(DEMLitModule):
         ais_warmup: int = 5e3,
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
-        bootstrap_warmup: int = 0,
+        bootstrap_warmup: int = 3e3,
         epsilon_train=1e-4,
     ) -> None:
             
@@ -171,8 +171,8 @@ class ENDEMLitModule(DEMLitModule):
         xu = xu.flatten(0, 1)
         with torch.no_grad():
             teacher_out = teacher_net.forward_e(u, xu).reshape(-1, num_samples)
-        log_sum_exp = torch.logsumexp(-teacher_out, dim=1) - torch.log(torch.tensor(num_samples, device=self.device))
-        return -log_sum_exp
+        log_sum_exp = torch.logsumexp(teacher_out, dim=1) - torch.log(torch.tensor(num_samples, device=self.device))
+        return log_sum_exp
     
     
     def get_loss(self, times: torch.Tensor, 
@@ -182,7 +182,7 @@ class ENDEMLitModule(DEMLitModule):
         
         self.iter_num += 1
         if self.bootstrap_scheduler is not None and train and self.iter_num > self.bootstrap_warmup:
-            return self.get_bootstrap_loss(times, samples, clean_samples)
+            bootstrap_loss = self.get_bootstrap_loss(times, samples, clean_samples)
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
         
@@ -208,8 +208,8 @@ class ENDEMLitModule(DEMLitModule):
         # we resample times for bootstrapping pairs
         t = torch.rand((samples.shape[0], ))
         i = self.bootstrap_scheduler.t_to_index(t)
-        i_tmp = i[torch.randint(i.shape[0], (1,))].item()
-        i = torch.full_like(i, i_tmp).long()
+        #i_tmp = i[torch.randint(i.shape[0], (1,))].item()
+        #i = torch.full_like(i, i_tmp).long()
         t = self.bootstrap_scheduler.sample_t(i)
         u = self.bootstrap_scheduler.sample_t(i - 1)
         t = torch.clamp(t,min=self.epsilon_train).float().to(samples.device)
