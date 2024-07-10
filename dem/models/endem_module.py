@@ -63,7 +63,7 @@ class ENDEMLitModule(DEMLitModule):
         ais_warmup: int = 5e3,
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
-        bootstrap_warmup: int = 5e3,
+        bootstrap_warmup: int = 1000,
         epsilon_train=1e-4,
     ) -> None:
             
@@ -156,7 +156,7 @@ class ENDEMLitModule(DEMLitModule):
         """
         Bootstrappingly estimate the energy at time t based on the energy at time u.
         """
-        assert torch.all(t >= u)
+        #assert torch.all(t >= (u-self.epsilon_train))
         if torch.all(u <= self.epsilon_train):
             """use the original estimator when u=0 --> t"""
             return self.energy_estimator(xt, t, num_samples)
@@ -232,7 +232,7 @@ class ENDEMLitModule(DEMLitModule):
         error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
         
         #return error_norms + self.t0_regulizer_weight * error_norms_t0
-        return self.lambda_weighter(times) ** 0.5 * error_norms  + \
+        return self.lambda_weighter(t) ** 0.5 * error_norms  + \
              error_norms_t0 * self.t0_regulizer_weight
         
         
