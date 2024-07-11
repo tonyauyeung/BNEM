@@ -222,7 +222,7 @@ class ENDEMLitModule(DEMLitModule):
                                                      self.num_estimator_mc_samples, 
                                                      val_model)
             t0_confidence = self.bootstrap_confidence(clean_samples, 
-                                                      torch.zeros_like(times), 
+                                                      t, 
                                                       self.num_estimator_mc_samples, 
                                                       val_model)
 
