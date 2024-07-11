@@ -226,7 +226,7 @@ class ENDEMLitModule(DEMLitModule):
                                                       torch.zeros_like(t),
                                                       self.num_estimator_mc_samples, 
                                                       val_model)
-            t0_confidence /= self.noise_schedule.h(u).sqrt()
+            t0_confidence /= self.noise_schedule.h(t).sqrt()
 
             sample_ratio = u_confidence / t0_confidence
             sample_mc_prop_ratio = torch.rand(sample_ratio.shape, device=samples.device) 
