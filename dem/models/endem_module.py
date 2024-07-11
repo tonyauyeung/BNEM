@@ -221,13 +221,13 @@ class ENDEMLitModule(DEMLitModule):
             u_confidence = self.bootstrap_confidence(clean_samples, u, 
                                                      self.num_estimator_mc_samples, 
                                                      val_model)
-            t0_confidence = self.bootstrap_confidence(clean_samples, 
+            t_confidence = self.bootstrap_confidence(clean_samples, 
                                                       t, 
                                                       self.num_estimator_mc_samples, 
                                                       val_model)
 
-            sample_ratio = u_confidence / t0_confidence
-            sample_mc_prop_ratio = torch.rand(sample_ratio.shape, device=samples.device) * 2
+            sample_ratio = t_confidence / u_confidence
+            sample_mc_prop_ratio = torch.rand(sample_ratio.shape, device=samples.device) 
             bootstrap_index = torch.where(sample_mc_prop_ratio < sample_ratio)[0]
             self.log(
                 "bootstrap_accept_rate",
