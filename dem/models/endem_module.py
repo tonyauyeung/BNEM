@@ -229,6 +229,13 @@ class ENDEMLitModule(DEMLitModule):
             sample_ratio = u_confidence / t0_confidence
             sample_mc_prop_ratio = torch.rand(sample_ratio.shape, device=samples.device)
             bootstrap_index = torch.where(sample_mc_prop_ratio < sample_ratio)[0]
+            self.log(
+                "bootstrap_accept_rate",
+                bootstrap_index.shape[0] / sample_ratio.shape[0],
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+            )
             bootstrap_energy_est = self.bootstrap_energy_estimator(samples[bootstrap_index], t[bootstrap_index], u[bootstrap_index], 
                                                                      self.num_estimator_mc_samples//5,
                                                                 val_model)
