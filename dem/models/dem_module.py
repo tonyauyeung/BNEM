@@ -404,7 +404,8 @@ class DEMLitModule(LightningModule):
         #error_norms = torch.abs(predicted_score - estimated_score).mean(-1)
 
         #return (self.lambda_weighter(times) ** 0.5) * error_norms
-        return self.lambda_weighter(times) * error_norms
+        #return self.lambda_weighter(times) * error_norms
+        return error_norms / (self.lambda_weighter(times) + 1e-3)
 
     def training_step(self, batch, batch_idx):
         loss = 0.0

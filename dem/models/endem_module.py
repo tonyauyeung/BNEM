@@ -10,6 +10,7 @@ from .dem_module import *
 from .components.energy_net_wrapper import EnergyNet
 from .components.score_estimator import log_expectation_reward, estimate_grad_Rt
 from .components.bootstrap_scheduler import BootstrapSchedule
+from .components.ema import EMA
 
 class ENDEMLitModule(DEMLitModule):
     def __init__(
@@ -64,7 +65,10 @@ class ENDEMLitModule(DEMLitModule):
         t0_regulizer_weight=0.5,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
+        bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
+        ema_beta=0.95,
+        ema_steps=1e4,
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -121,6 +125,11 @@ class ENDEMLitModule(DEMLitModule):
             self.bootstrap_scheduler = bootstrap_schedule
             self.epsilon_train = epsilon_train
             self.bootstrap_warmup = bootstrap_warmup
+            self.bootstrap_mc_samples = bootstrap_mc_samples
+            assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
+            
+            self.EMA = EMA(beta=ema_beta, step_start_ema=ema_steps)
+            self.ema_model = copy.deepcopy(self.net).eval().requires_grad_(False)
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -141,7 +150,8 @@ class ENDEMLitModule(DEMLitModule):
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
         x0_t = noise * sigmas.unsqueeze(-1) + xt.unsqueeze(1)
         if reduction:
-            energy_est = torch.logsumexp(self.energy_function(x0_t), dim=1) - torch.log(torch.tensor(num_samples)).to(xt.device)
+            energy_est = torch.logsumexp(self.energy_function(x0_t), dim=1) -\
+                torch.log(torch.tensor(num_samples)).to(xt.device)
             return energy_est
         return self.energy_function(x0_t)
     
@@ -156,7 +166,8 @@ class ENDEMLitModule(DEMLitModule):
             u: torch.Tensor, 
             num_samples: list, 
             teacher_net: nn.Module,
-            noise: Optional[torch.Tensor] = None
+            noise: Optional[torch.Tensor] = None,
+            reduction=False
         ) -> torch.Tensor:
         """
         Bootstrappingly estimate the energy at time t based on the energy at time u.
@@ -177,8 +188,9 @@ class ENDEMLitModule(DEMLitModule):
         xu = xu.flatten(0, 1)
         with torch.no_grad():
             teacher_out = teacher_net.forward_e(u, xu).reshape(-1, num_samples)
-        #log_sum_exp = torch.logsumexp(teacher_out, dim=1) - torch.log(torch.tensor(num_samples, device=self.device))
-        #return log_sum_exp
+        if reduction:    
+            log_sum_exp = torch.logsumexp(teacher_out, dim=1) - torch.log(torch.tensor(num_samples, device=self.device))
+            return log_sum_exp
         return teacher_out
     
     @torch.no_grad()
@@ -196,7 +208,7 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy = teacher_net.forward_e(t, xt)
         energy_est = self.energy_estimator(xt, t, num_samples, reduction=True)
         
-        return 1 / torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
+        return (energy_est - predicted_energy).pow(2)
         
     
     def get_loss(self, times: torch.Tensor, 
@@ -207,54 +219,51 @@ class ENDEMLitModule(DEMLitModule):
         self.iter_num += 1
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
-        if self.bootstrap_scheduler is not None and train and self.iter_num > self.bootstrap_warmup:
-            i = self.bootstrap_scheduler.t_to_index(times.cpu())
-            #i_tmp = i[torch.randint(i.shape[0], (1,))].item()
-            #i = torch.full_like(i, i_tmp).long()
-            t = self.bootstrap_scheduler.sample_t(i)
-            u = self.bootstrap_scheduler.sample_t(i - 1)
-            t = torch.clamp(t,min=self.epsilon_train).float().to(samples.device)
-            u = torch.clamp(u,min=self.epsilon_train).float().to(samples.device)
-            val_model = copy.deepcopy(self.net).to(samples.device).eval()
+        predicted_energy = self.net.forward_e(times, samples)
+        if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
+            with torch.no_grad():
+                t_loss = (energy_est - predicted_energy).pow(2) * self.lambda_weighter(times)
+                
+                i = self.bootstrap_scheduler.t_to_index(times.cpu())
+                u = self.bootstrap_scheduler.sample_t(i - 1)
+                u = torch.clamp(u,min=self.epsilon_train).float().to(samples.device)
+                
+                
+                
+                u_energy_est = self.bootstrap_energy_estimator(samples, times, u,
+                                                            self.num_estimator_mc_samples,
+                                                            self.ema_model, reduction=True)
+                u_predicted_energy = self.net.forward_e(u, samples) 
+                u_loss = (u_energy_est - u_predicted_energy).pow(2) * self.lambda_weighter(u)
 
-
-            u_confidence = self.bootstrap_confidence(clean_samples, u, 
-                                                     self.num_estimator_mc_samples, 
-                                                     val_model)
-            u_confidence /= torch.sqrt(self.noise_schedule.h(t) - self.noise_schedule.h(u)) + 1e-5
-            t0_confidence = self.bootstrap_confidence(clean_samples, 
-                                                      torch.zeros_like(t),
-                                                      self.num_estimator_mc_samples, 
-                                                      val_model)
-            t0_confidence /= self.noise_schedule.h(t).sqrt()
-
-            sample_ratio = u_confidence / t0_confidence
-            sample_mc_prop_ratio = torch.rand(sample_ratio.shape, device=samples.device) 
-            bootstrap_index = torch.where(sample_mc_prop_ratio < sample_ratio)[0]
+            
+            bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
+                                         > u_loss)
             self.log(
                 "bootstrap_accept_rate",
-                bootstrap_index.shape[0] / sample_ratio.shape[0],
+                bootstrap_index.shape[0] / t_loss.shape[0],
                 on_step=False,
                 on_epoch=True,
                 prog_bar=False,
             )
-            bootstrap_energy_est = self.bootstrap_energy_estimator(samples[bootstrap_index], t[bootstrap_index], u[bootstrap_index], 
-                                                                     self.num_estimator_mc_samples//5,
-                                                                val_model)
+            bootstrap_energy_est = self.bootstrap_energy_estimator(samples[bootstrap_index], 
+                                                                   times[bootstrap_index], u[bootstrap_index], 
+                                                                     self.bootstrap_mc_samples,
+                                                                self.ema_model)
             energy_est_full = self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples)
             
-            rand_index = torch.randint(0, self.num_estimator_mc_samples, (samples.shape[0], 4 * self.num_estimator_mc_samples//5))
+            rand_index = torch.randint(0, self.num_estimator_mc_samples, 
+                                       (samples.shape[0], 
+                                        self.num_estimator_mc_samples - self.bootstrap_mc_samples))
             energy_est = torch.stack([energy_est[i, rand_index[i]] for i in range(energy_est.shape[0])], dim=0)
-            boot_strap_energy_est = torch.cat([energy_est[bootstrap_index], bootstrap_energy_est], dim=1)
-            energy_est_full[bootstrap_index] = self.sum_energy_estimator(boot_strap_energy_est,
+            bootstrap_energy_est = torch.cat([energy_est[bootstrap_index], bootstrap_energy_est], dim=1)
+            energy_est_full[bootstrap_index] = self.sum_energy_estimator(bootstrap_energy_est,
                                                                          self.num_estimator_mc_samples)
             energy_est = energy_est_full
-            
+        
         else:
             energy_est = self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples)
-
-        
-        predicted_energy = self.net.forward_e(times, samples)
+            
         
         energy_clean = self.energy_function(clean_samples)
 
@@ -264,8 +273,12 @@ class ENDEMLitModule(DEMLitModule):
         error_norms = torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
         error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
         
+        #
+        if train:
+            self.EMA.step_ema(self.ema_model, self.net)
+        
         #return error_norms + self.t0_regulizer_weight * error_norms_t0
-        return self.lambda_weighter(times) ** 0.5 * error_norms  + \
+        return error_norms / self.lambda_weighter(times) ** 0.5  + \
              error_norms_t0 * self.t0_regulizer_weight
         
     
@@ -283,10 +296,10 @@ class ENDEMLitModule(DEMLitModule):
         t = torch.clamp(t,min=self.epsilon_train).float().to(samples.device)
         u = torch.clamp(u,min=self.epsilon_train).float().to(samples.device)
         
-        val_model = copy.deepcopy(self.net).to(samples.device).eval()
         
         energy_est = self.bootstrap_energy_estimator(samples, t, u, 
-                                                     self.num_estimator_mc_samples//10, val_model)
+                                                     self.num_estimator_mc_samples//5, self.ema_model)
+                                                     
         
         predicted_energy = self.net.forward_e(t, samples)
         

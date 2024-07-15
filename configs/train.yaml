@@ -7,7 +7,7 @@ defaults:
   - data: dummy
   - energy: gmm
   - model: dem
-  - callbacks: default
+  - callbacks: bootstrap
   - launcher: null
   - logger: wandb # set logger here or use command line (e.g. `python train.py logger=tensorboard`)
   - trainer: default

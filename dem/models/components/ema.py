@@ -84,3 +84,32 @@ class EMAWrapper(torch.nn.Module):
         """Move the backup parameters into the current model's parameters in-place."""
         for param, backup in zip(self.model.parameters(), self.backup_params):
             param.data.copy_(backup.data)
+
+
+class EMA:
+    def __init__(self, beta, step_start_ema=2000):
+        super().__init__()
+        self.beta = beta
+        self.step = 0
+        self.step_start_ema = step_start_ema
+
+    def update_model_average(self, ma_model, current_model):
+        for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+            old_weight, up_weight = ma_params.data, current_params.data
+            ma_params.data = self.update_average(old_weight, up_weight)
+
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.beta + (1 - self.beta) * new
+
+    def step_ema(self, ema_model, model):
+        if self.step < self.step_start_ema:
+            self.reset_parameters(ema_model, model)
+            self.step += 1
+            return
+        self.update_model_average(ema_model, model)
+        self.step += 1
+
+    def reset_parameters(self, ema_model, model):
+        ema_model.load_state_dict(model.state_dict())
