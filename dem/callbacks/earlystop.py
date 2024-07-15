@@ -228,9 +228,9 @@ class MultiEarlyStopping(Callback):
     
         # stop every ddp process if any world process decides to stop
         should_stop = trainer.strategy.reduce_boolean_decision(should_stop, all=False)
-        trainer.should_stop = trainer.should_stop or should_stop
         if should_stop and self.train_stage == self.train_stage_num:
             self.stopped_epoch = trainer.current_epoch
+            trainer.should_stop = trainer.should_stop or should_stop
         elif should_stop and self.train_stage < self.train_stage_num:
             self.train_stage +=1
             self.train_stage_updated = True
