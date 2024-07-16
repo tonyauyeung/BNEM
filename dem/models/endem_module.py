@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import torch.nn as nn
 from lightning import LightningModule
 from functools import partial
+from scipy.spatial.distance import cdist
+from scipy.optimize import linear_sum_assignment
 
 from .dem_module import *
 from .components.energy_net_wrapper import EnergyNet
@@ -140,11 +142,11 @@ class ENDEMLitModule(DEMLitModule):
         return self.net(t, x, with_grad=with_grad)
     
     def energy_estimator(self, xt, t, num_samples, reduction=False):
-        if self.ais_steps == 0 and self.iter_num < self.ais_warmup:
+        if self.ais_steps != 0 and self.iter_num < self.ais_warmup:
             return ais(xt, t, 
                        num_samples, self.ais_steps, 
                        self.noise_schedule, self.energy_function, 
-                       dt=self.ais_dt)[0].detach()
+                       dt=self.ais_dt, mode='energy', reduction=False)
         sigmas = self.noise_schedule.h(t).unsqueeze(1).sqrt()
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
@@ -193,6 +195,32 @@ class ENDEMLitModule(DEMLitModule):
             return log_sum_exp
         return teacher_out
     
+    
+    def contrastive_loss(self, datapoints, predictions, targets, threshold=80):
+        #TODO add kabsch algorithm for distance if the datapoints are molecular sysstem
+        # Compute the pairwise Euclidean distance matrix for the datapoints
+        dist_matrix = cdist(datapoints.cpu().numpy(), 
+                                  datapoints.cpu().numpy(), 
+                                  metric='euclidean')
+        
+        # To ensure no point is paired with itself, set the diagonal to infinity
+        np.fill_diagonal(dist_matrix, np.inf)
+        
+        # Apply the Hungarian algorithm to find the optimal pairing
+        row_ind, col_ind = linear_sum_assignment(dist_matrix)
+        
+        row_ind = torch.tensor(row_ind, dtype=torch.long).to(datapoints.device)
+        col_ind = torch.tensor(col_ind, dtype=torch.long).to(datapoints.device)
+        
+        # Compute the loss based on the given condition
+        target_diff = targets[row_ind] - targets[col_ind]
+        pred_diff = predictions[row_ind] - predictions[col_ind]
+        
+        loss = pred_diff * (target_diff > 0).float() - pred_diff * (target_diff < 0).float()
+        loss = torch.clamp(loss, max=threshold)
+        
+        return - loss
+    
     @torch.no_grad()
     def bootstrap_confidence(self, 
                              x0: torch.Tensor, 
@@ -209,7 +237,7 @@ class ENDEMLitModule(DEMLitModule):
         energy_est = self.energy_estimator(xt, t, num_samples, reduction=True)
         
         return (energy_est - predicted_energy).pow(2)
-        
+    
     
     def get_loss(self, times: torch.Tensor, 
                  samples: torch.Tensor, 
@@ -220,7 +248,7 @@ class ENDEMLitModule(DEMLitModule):
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
         predicted_energy = self.net.forward_e(times, samples)
-        if self.bootstrap_scheduler is not None and train and self.train_stage == 0:
+        if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
             with torch.no_grad():
                 t_loss = (self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples) \
                           - predicted_energy).pow(2) * self.lambda_weighter(times)
@@ -271,8 +299,10 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
         
-        error_norms = torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
-        error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
+        #error_norms = torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
+        #error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
+        error_norms = self.contrastive_loss(samples, predicted_energy,  energy_est)
+        error_norms_t0 = self.contrastive_loss(clean_samples, predicted_energy_clean, energy_clean)
         
         #
         if train:

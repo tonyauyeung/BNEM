@@ -98,11 +98,11 @@ def integrate_sde(
                 x = remove_mean(x, energy_function.n_particles, energy_function.n_spatial_dim)
             if energy_function._can_normalize:
                 clip_range = [energy_function.normalization_min, energy_function.normalization_max]
-                x = torch.clamp(x, -1.0, 1.0)
+                #x = torch.clamp(x, -1.0, 1.0)
             else:
                 test_set = energy_function._val_set
                 clip_range = [torch.min(test_set), torch.max(test_set)]
-                x = torch.clamp(x, clip_range[0], clip_range[1])
+                #x = torch.clamp(x, clip_range[0], clip_range[1])
             samples.append(x.detach())
 
     samples = torch.stack(samples)

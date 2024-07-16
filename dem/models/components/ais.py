@@ -19,7 +19,8 @@ def hmc(samples, log_prob, score_func=None, step_size=0.1, num_steps=1, mass=1):
 
 def ais(xt, t, num_samples, L, 
         noise_schedule, energy_func,
-        dt=0.1):
+        dt=0.1,  mode='score',
+        reduction=True):
     device = xt.device
     sigmas = noise_schedule.h(t)[:, None].to(device).sqrt()
     data_shape = list(xt.shape)[1:]
@@ -38,7 +39,17 @@ def ais(xt, t, num_samples, L,
         xk = hmc(xk, log_prob_k, score_k, step_size=dt, num_steps=1, mass=1)
         # logw += -gmm(xk) / L
     # xt.requires_grad_(True)
-    energy = torch.logsumexp(logw, dim=1) - np.log(num_samples)
-    score = torch.autograd.grad(-energy.sum(), inputs=xt)[0]
-    xt.requires_grad_(False)
-    return energy, score
+    if mode == 'score':
+        energy = torch.logsumexp(logw, dim=1) - np.log(num_samples)
+        score = torch.autograd.grad(-energy.sum(), 
+                                    inputs=xt)[0]
+        xt.requires_grad_(False)
+        return score
+    elif mode == 'energy':
+        if reduction:
+            energy = torch.logsumexp(logw, dim=1) - np.log(num_samples)
+            xt.requires_grad_(False)
+            return energy
+        else:
+            xt.requires_grad_(False)
+            return -logw
