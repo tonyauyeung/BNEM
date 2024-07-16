@@ -220,9 +220,10 @@ class ENDEMLitModule(DEMLitModule):
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
         predicted_energy = self.net.forward_e(times, samples)
-        if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
+        if self.bootstrap_scheduler is not None and train and self.train_stage == 0:
             with torch.no_grad():
-                t_loss = (energy_est - predicted_energy).pow(2) * self.lambda_weighter(times)
+                t_loss = (self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples) \
+                          - predicted_energy).pow(2) * self.lambda_weighter(times)
                 
                 i = self.bootstrap_scheduler.t_to_index(times.cpu())
                 u = self.bootstrap_scheduler.sample_t(i - 1)
@@ -238,7 +239,7 @@ class ENDEMLitModule(DEMLitModule):
 
             
             bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
-                                         > u_loss)
+                                         > u_loss)[0]
             self.log(
                 "bootstrap_accept_rate",
                 bootstrap_index.shape[0] / t_loss.shape[0],
