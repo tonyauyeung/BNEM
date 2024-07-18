@@ -2,7 +2,7 @@
 
 multi_early_stop:
   _target_: dem.callbacks.earlystop.MultiEarlyStopping
-  monitor: ["val/loss_epoch", "val/energy_w2"] # quantity to be monitored, must be specified !!!
+  monitor: ["val/energy_w2", "val/energy_w2"] # quantity to be monitored, must be specified !!!
   min_delta: 0. # minimum change in the monitored quantity to qualify as an improvement
   patience: 20 # number of checks with no improvement after which training will be stopped
   verbose: True # verbosity mode

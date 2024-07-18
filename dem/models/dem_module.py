@@ -1,4 +1,5 @@
 import time
+import copy
 from typing import Any, Dict, Optional
 
 import hydra
@@ -23,6 +24,7 @@ from .components.clipper import Clipper
 from .components.cnf import CNF
 from .components.distribution_distances import compute_distribution_distances
 from .components.ema import EMAWrapper
+from .components.ema import EMA
 from .components.lambda_weighter import BaseLambdaWeighter
 from .components.mlp import TimeConder
 from .components.noise_schedules import BaseNoiseSchedule
@@ -148,6 +150,8 @@ class DEMLitModule(LightningModule):
         ais_steps: int = 5,
         ais_dt: float = 0.1,
         ais_warmup: int = 1e4,
+        ema_beta=0.95,
+        ema_steps=1e4,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -167,6 +171,9 @@ class DEMLitModule(LightningModule):
         self.net = net(energy_function=energy_function)
         self.cfm_net = net(energy_function=energy_function)
 
+        self.EMA = EMA(beta=ema_beta, step_start_ema=ema_steps)
+        self.ema_model = copy.deepcopy(self.net).eval().requires_grad_(False)
+        
         if use_ema:
             self.net = EMAWrapper(self.net)
             self.cfm_net = EMAWrapper(self.cfm_net)
@@ -420,7 +427,11 @@ class DEMLitModule(LightningModule):
             times = torch.rand(
                 (self.num_samples_to_sample_from_buffer,), device=iter_samples.device
             )
-
+            
+            #use this for identical times in one batch
+            #t = torch.rand([])
+            #times = torch.zeros_like(times) + t
+            
             noised_samples = iter_samples + (
                 torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
             )
@@ -435,9 +446,9 @@ class DEMLitModule(LightningModule):
             dem_loss = self.get_loss(times, noised_samples, iter_samples, train=True)
             # Uncomment for SM
             # dem_loss = self.get_score_loss(times, iter_samples, noised_samples)
-            self.log_dict(
-                t_stratified_loss(times, dem_loss, loss_name="train/stratified/dem_loss")
-            )
+            #self.log_dict(
+            #    t_stratified_loss(times, dem_loss, loss_name="train/stratified/dem_loss")
+            #)
             dem_loss = dem_loss.mean()
             loss = loss + dem_loss
 
@@ -488,6 +499,7 @@ class DEMLitModule(LightningModule):
             self.net.update_ema()
             if self.should_train_cfm(batch_idx):
                 self.cfm_net.update_ema()
+        self.EMA.step_ema(self.ema_model, self.net)
 
     def generate_samples(
         self,
@@ -565,7 +577,12 @@ class DEMLitModule(LightningModule):
             )
             self.last_energies = self.energy_function(self.last_samples)
         else:
-            self.last_samples = self.generate_samples(diffusion_scale=self.diffusion_scale)
+            reverse_sde = VEReverseSDE(
+                self.net, self.noise_schedule
+            )
+            self.last_samples = self.generate_samples(
+                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
+            )
             self.last_energies = self.energy_function(self.last_samples)
         self.buffer.add(self.last_samples, self.last_energies)
         prefix = "val"

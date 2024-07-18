@@ -169,6 +169,7 @@ class GMM(BaseEnergyFunction):
             samples = self.unnormalize(samples)
         samples_fig = self.get_single_dataset_fig(samples, name)
         wandb_logger.log_image(f"{name}", [samples_fig])
+    
 
     def get_single_dataset_fig(self, samples, name, plotting_bounds=(-1.4 * 40, 1.4 * 40)):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))

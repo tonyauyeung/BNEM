@@ -14,6 +14,19 @@ from .components.score_estimator import log_expectation_reward, estimate_grad_Rt
 from .components.bootstrap_scheduler import BootstrapSchedule
 from .components.ema import EMA
 
+def remove_diag(x):
+    assert x.shape[0] == x.shape[1]
+    N = x.shape[0]
+    mask = torch.eye(N, dtype=torch.bool)
+
+    # Invert the mask to get the off-diagonal elements
+    off_diag_mask = ~mask
+    off_diag_elements = x[off_diag_mask]
+    x = off_diag_elements.view(N, N - 1)
+    return x
+
+
+
 class ENDEMLitModule(DEMLitModule):
     def __init__(
         self,
@@ -61,16 +74,14 @@ class ENDEMLitModule(DEMLitModule):
         version=1,
         negative_time=False,
         num_negative_time_steps=100,
-        ais_steps: int = 5,
+        ais_steps: int = 0,
         ais_dt: float = 0.1,
         ais_warmup: int = 5e3,
-        t0_regulizer_weight=0.5,
+        t0_regulizer_weight=1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
-        ema_beta=0.95,
-        ema_steps=1e4,
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -130,8 +141,9 @@ class ENDEMLitModule(DEMLitModule):
             self.bootstrap_mc_samples = bootstrap_mc_samples
             assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
             
-            self.EMA = EMA(beta=ema_beta, step_start_ema=ema_steps)
-            self.ema_model = copy.deepcopy(self.net).eval().requires_grad_(False)
+            self.energy_sigma = None
+            self.energy_mean = None
+            
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -196,30 +208,58 @@ class ENDEMLitModule(DEMLitModule):
         return teacher_out
     
     
-    def contrastive_loss(self, datapoints, predictions, targets, threshold=80):
-        #TODO add kabsch algorithm for distance if the datapoints are molecular sysstem
-        # Compute the pairwise Euclidean distance matrix for the datapoints
-        dist_matrix = cdist(datapoints.cpu().numpy(), 
-                                  datapoints.cpu().numpy(), 
-                                  metric='euclidean')
+    def contrastive_loss(self, datapoints, predictions, targets, large_energy_space):
+        if datapoints.shape[0] == 0:
+            return torch.tensor(0.).to(datapoints.device)
+        pred_dist = predictions[:, None] - predictions[None, :]
+        tar_dist = targets[:, None] - targets[None, :]
+        data_dist = torch.cdist(datapoints, datapoints)
         
-        # To ensure no point is paired with itself, set the diagonal to infinity
-        np.fill_diagonal(dist_matrix, np.inf)
+        pred_dist = remove_diag(pred_dist)
+        tar_dist = remove_diag(tar_dist)
         
-        # Apply the Hungarian algorithm to find the optimal pairing
-        row_ind, col_ind = linear_sum_assignment(dist_matrix)
+        tar_dist -= tar_dist.mean()
+        pred_dist = (pred_dist - pred_dist.mean()) / pred_dist.std()
         
-        row_ind = torch.tensor(row_ind, dtype=torch.long).to(datapoints.device)
-        col_ind = torch.tensor(col_ind, dtype=torch.long).to(datapoints.device)
+        if self.iter_num < 1000:
+            self.energy_sigma = tar_dist.std()
+            self.energy_mean = tar_dist.mean()
+        else:
+            self.energy_sigma = self.energy_sigma * 0.99 + tar_dist.std() * 0.01
+            self.energy_mean = self.energy_mean * 0.99 + tar_dist.mean() * 0.01
         
-        # Compute the loss based on the given condition
-        target_diff = targets[row_ind] - targets[col_ind]
-        pred_diff = predictions[row_ind] - predictions[col_ind]
+        pred_dist = (pred_dist - self.energy_mean) / self.energy_sigma
+        tar_dist /= (tar_dist.std() + 1e-5)
         
-        loss = pred_diff * (target_diff > 0).float() - pred_diff * (target_diff < 0).float()
-        loss = torch.clamp(loss, max=threshold)
         
-        return - loss
+        return torch.abs(pred_dist - tar_dist)
+        
+        '''
+        pred_dist = (pred_dist - pred_dist.min()) / \
+            (pred_dist.max() - pred_dist.min())
+        tar_dist = (tar_dist - tar_dist.min()) / \
+            (tar_dist.max() - tar_dist.min())
+        
+        return torch.abs(pred_dist - tar_dist)
+        '''
+        '''
+        loss = torch.abs(pred_dist) * (torch.logical_and(tar_dist < 0, pred_dist > 0).float())
+        loss +=  torch.abs(pred_dist) * (torch.logical_and(tar_dist > 0, pred_dist < 0).float())
+        
+        loss = remove_diag(loss)
+        data_dist = remove_diag(data_dist)
+        tar_dist = remove_diag(tar_dist)
+        
+        weight = nn.Softmax(dim=-1)(1 / (data_dist + 1e-5))
+        
+        loss = torch.sum(loss * weight, dim=-1)[large_energy_space]
+        
+        #pred_threshold = predictions[large_energy_space] - (-100)
+        
+        #loss += (pred_threshold * (pred_threshold > 0))
+        return loss
+        '''
+        
     
     @torch.no_grad()
     def bootstrap_confidence(self, 
@@ -245,6 +285,7 @@ class ENDEMLitModule(DEMLitModule):
                  train=False) -> torch.Tensor:
         
         self.iter_num += 1
+        
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
         predicted_energy = self.net.forward_e(times, samples)
@@ -299,18 +340,72 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
         
-        #error_norms = torch.nn.functional.l1_loss(energy_est, predicted_energy, reduction='none')
-        #error_norms_t0 = torch.nn.functional.l1_loss(energy_clean, predicted_energy_clean, reduction='none')
-        error_norms = self.contrastive_loss(samples, predicted_energy,  energy_est)
-        error_norms_t0 = self.contrastive_loss(clean_samples, predicted_energy_clean, energy_clean)
+        error_norms = torch.abs(energy_est - predicted_energy)
+        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
         
-        #
-        if train:
-            self.EMA.step_ema(self.ema_model, self.net)
+        self.log(
+                "energy_loss_t0",
+                error_norms_t0.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
         
-        #return error_norms + self.t0_regulizer_weight * error_norms_t0
-        return error_norms / self.lambda_weighter(times) ** 0.5  + \
-             error_norms_t0 * self.t0_regulizer_weight
+        self.log(
+                "energy_loss",
+                error_norms.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
+        
+        '''
+        large_energy_space = (energy_est < 100)
+        c_loss = self.contrastive_loss(samples, 
+                                       predicted_energy,  
+                                       energy_est,
+                                       large_energy_space)
+        large_energy_space = (energy_clean < -100)
+        c_loss_t0 = self.contrastive_loss(clean_samples, 
+                                       predicted_energy_clean,  
+                                       energy_clean,
+                                       large_energy_space)
+        self.log(
+                "large_energy_space",
+                large_energy_space.sum() / large_energy_space.shape[0],
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
+        
+        self.log(
+                "contrast_loss",
+                c_loss.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
+        '''
+        
+        self.log(
+            "largest energy",
+            energy_est.min(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+        )
+        
+        self.log(
+            "mean energy",
+            energy_est.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+        )
+
+        
+        return self.lambda_weighter(times) ** 0.5 * error_norms + \
+            self.lambda_weighter(torch.zeros_like(times)) ** 0.5 * self.t0_regulizer_weight * error_norms_t0
         
     
     def get_bootstrap_loss(self, times: torch.Tensor, 

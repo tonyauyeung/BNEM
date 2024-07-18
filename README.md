@@ -13,11 +13,14 @@ pip install -r requirements.txt
 ```
 
 ## Run experiments
-To run an experiment, e.g., GMM with iDEM, you can run on the command line
+To run an experiment, e.g., GMM with ENDEM, you can run on the command line
 
 ```bash
-python dem/train.py experiment=gmm_idem
+#model=dem/dem_en/endem/endem_bootstrap
+#export WANDB_ENTITY=Energy-basedDEM
+python dem/train.py experiment=gmm_idem model=endem
 ```
+you could modify `configs/logger/wandb.yaml` to specify the name of your project.
 
 To evaluate the sampled results for NLL and ESS, you need to modify the energy yaml file to your sampled datapoints:
 
