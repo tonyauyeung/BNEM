@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from dem.utils.data_utils import remove_mean
+from dem.models.components.mlp import PositionalEmbedding
 
 
 class EGNN_dynamics(nn.Module):
@@ -22,7 +23,7 @@ class EGNN_dynamics(nn.Module):
         super().__init__()
         self.egnn = EGNN(
             in_node_nf=1,
-            in_edge_nf=1,
+            in_edge_nf=32,
             hidden_nf=hidden_nf,
             act_fn=act_fn,
             n_layers=n_layers,
@@ -39,6 +40,7 @@ class EGNN_dynamics(nn.Module):
         self.condition_time = condition_time
         # Count function calls
         self.counter = 0
+        self.pos_embed = PositionalEmbedding(32, "sinusoidal")
 
     def forward(self, t, xs):
         t = t.unsqueeze(-1)
@@ -52,6 +54,7 @@ class EGNN_dynamics(nn.Module):
             h = h * t
         h = h.reshape(n_batch * self._n_particles, 1)
         edge_attr = torch.sum((x[edges[0]] - x[edges[1]]) ** 2, dim=1, keepdim=True)
+        edge_attr = self.pos_embed(edge_attr)
         _, x_final = self.egnn(h, x, edges, edge_attr=edge_attr)
         vel = x_final - x
 

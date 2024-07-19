@@ -154,7 +154,7 @@ class ENDEMLitModule(DEMLitModule):
         return self.net(t, x, with_grad=with_grad)
     
     def energy_estimator(self, xt, t, num_samples, reduction=False):
-        if self.ais_steps != 0 and self.iter_num < self.ais_warmup:
+        if self.ais_steps != 0 and self.iter_num > self.ais_warmup:
             return ais(xt, t, 
                        num_samples, self.ais_steps, 
                        self.noise_schedule, self.energy_function, 

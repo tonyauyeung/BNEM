@@ -196,6 +196,85 @@ class TimeConder(nn.Module):
         return self.layers(cond)
 
 
+class MyFourierMLP(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int = 128,
+        hidden_layers: int = 3,
+        emb_size: int = 128,
+        out_dim: int = 2,
+        time_emb: str = "sinusoidal",
+        input_emb: str = "sinusoidal",
+        add_t_emb: bool = False,
+        concat_t_emb: bool = False,
+        input_dim: int = 2,
+        num_basis: int = 32,
+        energy_function=None,
+    ):
+        super().__init__()
+
+        self.add_t_emb = add_t_emb
+        self.concat_t_emb = concat_t_emb
+        self.num_basis = num_basis
+
+        self.time_mlp = PositionalEmbedding(emb_size, time_emb)
+
+        self.positional_embeddings = nn.ModuleList()
+        for i in range(input_dim):
+            embedding = PositionalEmbedding(emb_size, input_emb, scale=25.0)
+            self.positional_embeddings.append(embedding)
+
+        concat_size = len(self.time_mlp.layer) + sum(
+            map(lambda x: len(x.layer), self.positional_embeddings)
+        )
+
+        layers = [nn.Linear(concat_size, hidden_size)]
+        for _ in range(hidden_layers):
+            layers.append(Block(hidden_size, emb_size, add_t_emb, concat_t_emb))
+
+        in_size = emb_size + hidden_size if concat_t_emb else emb_size
+        self.basis_dim = hidden_size // (num_basis * 2)
+        layers.append(nn.Linear(in_size, 2 * self.basis_dim * num_basis + self.basis_dim))
+        layers.append(nn.Linear(self.basis_dim, 1))
+        self.layers = layers
+        self.joint_mlp = nn.Sequential(*layers)
+        self.frequencies = nn.Parameter(torch.randn(1, num_basis, 1).float())
+
+    def forward(self, t, x, x_self_cond=False):
+        positional_embs = [
+            self.positional_embeddings[i](x[:, i]) for i in range(x.shape[-1])
+        ]
+
+        t_emb = self.time_mlp(t.squeeze())
+        x = torch.cat((*positional_embs, t_emb), dim=-1)
+
+        for i, layer in enumerate(self.layers):
+            if i == 0:
+                x = nn.GELU()(layer(x))
+                if self.add_t_emb:
+                    x = x + t_emb
+            elif i == len(self.layers) - 2:
+                if self.concat_t_emb:
+                    x = torch.cat([x, t_emb], dim=-1)
+
+                coefficients = layer(x)
+                x = coefficients[:, 2 * self.num_basis * self.basis_dim:]
+                coefficients = coefficients[:, :2 * self.num_basis * self.basis_dim]
+                coefficients = coefficients.view(-1, 2 * self.num_basis, self.basis_dim)
+                an = coefficients[:, :self.num_basis]
+                bn = coefficients[:, self.num_basis:]
+
+                # Compute the Fourier series sum without for loop
+                x = x.unsqueeze(1).repeat(1, self.num_basis, 1)
+                S = torch.sum(an * torch.cos(x * self.frequencies) + bn * torch.sin(x * self.frequencies), dim=1)
+                x = S
+            elif i == len(self.layers) - 1:
+                x = layer(x)
+            else:
+                x = layer(x, t_emb)
+
+        return x
+
 class MyMLP(nn.Module):
     def __init__(
         self,
