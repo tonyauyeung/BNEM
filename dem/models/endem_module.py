@@ -82,7 +82,7 @@ class ENDEMLitModule(DEMLitModule):
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
-        c_loss_weight=1,
+        c_loss_weight=100,
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -228,7 +228,7 @@ class ENDEMLitModule(DEMLitModule):
         pred_dist = (pred_dist - pred_dist.mean()) / pred_dist.std()
         tar_dist = (tar_dist - tar_dist.mean()) / tar_dist.std()
         
-        return - tar_dist * pred_dist * (targets.detach())
+        return - tar_dist * pred_dist
         
     
     @torch.no_grad()
@@ -336,13 +336,14 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
             )
         
-        
+        large_e_range = (energy_est < -1000.)
         c_loss = self.contrastive_loss(samples, 
-                                       predicted_energy,  
-                                       energy_est) * self.c_loss_weight
+                                       predicted_energy[large_e_range],  
+                                       energy_est[large_e_range]) * self.c_loss_weight
+        large_e_range = (energy_clean < -1000.)
         c_loss_t0 = self.contrastive_loss(clean_samples, 
-                                       predicted_energy_clean,  
-                                       energy_clean) * self.c_loss_weight
+                                       predicted_energy_clean[large_e_range],  
+                                       energy_clean[large_e_range]) * self.c_loss_weight
 
         
         self.log(
