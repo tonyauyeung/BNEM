@@ -98,10 +98,7 @@ class GMM(BaseEnergyFunction):
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
 
-        neg_energy = self.gmm.log_prob(samples)
-        neg_energy[neg_energy < -1000.] = -1000.
-        
-        return neg_energy
+        return self.gmm.log_prob(samples)
 
     @property
     def dimensionality(self):

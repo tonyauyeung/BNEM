@@ -429,8 +429,8 @@ class DEMLitModule(LightningModule):
             )
             
             #use this for identical times in one batch
-            t = torch.rand([])
-            times = torch.zeros_like(times) + t
+            #t = torch.rand([])
+            #times = torch.zeros_like(times) + t
             
             noised_samples = iter_samples + (
                 torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)

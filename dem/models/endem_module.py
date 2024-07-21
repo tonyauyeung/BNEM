@@ -166,11 +166,12 @@ class ENDEMLitModule(DEMLitModule):
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
         x0_t = noise * sigmas.unsqueeze(-1) + xt.unsqueeze(1)
+        energy_est = torch.clamp(self.energy_function(x0_t), min=-1000.)
         if reduction:
-            energy_est = torch.logsumexp(self.energy_function(x0_t), dim=1) -\
+            energy_est = torch.logsumexp(energy_est, dim=1) -\
                 torch.log(torch.tensor(num_samples)).to(xt.device)
             return energy_est
-        return self.energy_function(x0_t)
+        return energy_est
     
     def sum_energy_estimator(self, e, num_samples):
         return torch.logsumexp(e, dim=1) - torch.log(torch.tensor(num_samples)).to(e.device) 
@@ -376,8 +377,8 @@ class ENDEMLitModule(DEMLitModule):
         )
 
         
-        return (error_norms.mean()) / self.lambda_weighter(times) + \
-            (error_norms_t0.mean()) * self.t0_regulizer_weight
+        return (error_norms.mean() + c_loss.mean()) / self.lambda_weighter(times) + \
+            (error_norms_t0.mean() + c_loss_t0.mean()) * self.t0_regulizer_weight
         
     
     def get_bootstrap_loss(self, times: torch.Tensor, 
