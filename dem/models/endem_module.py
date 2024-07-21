@@ -312,9 +312,11 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
         
-        error_norms = torch.abs(energy_est - predicted_energy).pow(2)
+        error_norms = torch.abs(energy_est -\
+            torch.clamp(predicted_energy, min=-1000.)).pow(2)
 
-        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean).pow(2)
+        error_norms_t0 = torch.abs(energy_clean - \
+                torch.clamp(predicted_energy_clean, min=-1000.)).pow(2)
         if self.iter_num % 50 ==0:
             print("checky pred: ", predicted_energy_clean[:5], 'target: ', energy_clean[:5])
         
