@@ -151,7 +151,7 @@ class DEMLitModule(LightningModule):
         ais_dt: float = 0.1,
         ais_warmup: int = 1e4,
         ema_beta=0.95,
-        ema_steps=1e4,
+        ema_steps=0,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -429,8 +429,8 @@ class DEMLitModule(LightningModule):
             )
             
             #use this for identical times in one batch
-            #t = torch.rand([])
-            #times = torch.zeros_like(times) + t
+            t = torch.rand([])
+            times = torch.zeros_like(times) + t
             
             noised_samples = iter_samples + (
                 torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
@@ -570,7 +570,7 @@ class DEMLitModule(LightningModule):
         "Lightning hook that is called when a training epoch ends."
         if self.clipper_gen is not None:
             reverse_sde = VEReverseSDE(
-                self.clipper_gen.wrap_grad_fxn(self.net), self.noise_schedule
+                self.clipper_gen.wrap_grad_fxn(self.ema_model), self.noise_schedule
             )
             self.last_samples = self.generate_samples(
                 reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
@@ -578,7 +578,7 @@ class DEMLitModule(LightningModule):
             self.last_energies = self.energy_function(self.last_samples)
         else:
             reverse_sde = VEReverseSDE(
-                self.net, self.noise_schedule
+                self.ema_model, self.noise_schedule
             )
             self.last_samples = self.generate_samples(
                 reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
@@ -1042,14 +1042,19 @@ class DEMLitModule(LightningModule):
             self.cfm_prior = self.partial_prior(device=self.device, scale=self.cfm_prior_std)
         else:
             self.cfm_prior = self.partial_prior(device=self.device, scale=self.noise_schedule.h(1) ** 0.5)
-        if self.init_from_prior:
+        if 1:
             init_states = self.prior.sample(self.num_init_samples)
         else:
             init_states = self.generate_samples(
-                reverse_sde, self.num_init_samples, diffusion_scale=self.diffusion_scale
+                None, self.num_init_samples, diffusion_scale=self.diffusion_scale
             )
         init_energies = self.energy_function(init_states)
-
+        
+        self.energy_function.log_on_epoch_end(
+                init_states, init_energies,
+                get_wandb_logger(self.loggers)
+            )
+        
         self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":

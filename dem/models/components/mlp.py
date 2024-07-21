@@ -208,7 +208,7 @@ class MyFourierMLP(nn.Module):
         add_t_emb: bool = False,
         concat_t_emb: bool = False,
         input_dim: int = 2,
-        num_basis: int = 32,
+        num_basis: int = 128,
         energy_function=None,
     ):
         super().__init__()
@@ -233,14 +233,15 @@ class MyFourierMLP(nn.Module):
             layers.append(Block(hidden_size, emb_size, add_t_emb, concat_t_emb))
 
         in_size = emb_size + hidden_size if concat_t_emb else emb_size
-        self.basis_dim = hidden_size // (num_basis * 2)
-        layers.append(nn.Linear(in_size, 2 * self.basis_dim * num_basis + self.basis_dim))
-        layers.append(nn.Linear(self.basis_dim, 1))
+        self.out_dim = out_dim
+        layers.append(nn.Linear(in_size, 2 * self.out_dim * num_basis + self.out_dim))
         self.layers = layers
         self.joint_mlp = nn.Sequential(*layers)
         self.frequencies = nn.Parameter(torch.randn(1, num_basis, 1).float())
+        
 
     def forward(self, t, x, x_self_cond=False):
+        
         positional_embs = [
             self.positional_embeddings[i](x[:, i]) for i in range(x.shape[-1])
         ]
@@ -253,26 +254,23 @@ class MyFourierMLP(nn.Module):
                 x = nn.GELU()(layer(x))
                 if self.add_t_emb:
                     x = x + t_emb
-            elif i == len(self.layers) - 2:
+            elif i == len(self.layers) - 1:
                 if self.concat_t_emb:
                     x = torch.cat([x, t_emb], dim=-1)
 
                 coefficients = layer(x)
-                x = coefficients[:, 2 * self.num_basis * self.basis_dim:]
-                coefficients = coefficients[:, :2 * self.num_basis * self.basis_dim]
-                coefficients = coefficients.view(-1, 2 * self.num_basis, self.basis_dim)
+                x = coefficients[:, 2 * self.num_basis * self.out_dim:]
+                coefficients = coefficients[:, :2 * self.num_basis * self.out_dim]
+                coefficients = coefficients.view(-1, 2 * self.num_basis, self.out_dim)
                 an = coefficients[:, :self.num_basis]
                 bn = coefficients[:, self.num_basis:]
 
                 # Compute the Fourier series sum without for loop
                 x = x.unsqueeze(1).repeat(1, self.num_basis, 1)
-                S = torch.sum(an * torch.cos(x * self.frequencies) + bn * torch.sin(x * self.frequencies), dim=1)
-                x = S
-            elif i == len(self.layers) - 1:
-                x = layer(x)
+                x = torch.sum(an * torch.cos(x * self.frequencies) + bn, 1)# * torch.sin(x * self.frequencies), dim=1)
             else:
                 x = layer(x, t_emb)
-
+        
         return x
 
 class MyMLP(nn.Module):
@@ -343,7 +341,7 @@ class MyMLP(nn.Module):
             else:
                 x = layer(x, t_emb)
 
-        return x
+        return - torch.exp(x) + 10
 
 
 class MyMLPNoSpaceEmbedding(nn.Module):
@@ -523,6 +521,7 @@ class SpectralNormMLP(nn.Module):
         self.fc3 = spectral_norm(nn.Linear(hidden2_size, output_size))
 
     def forward(self, x):
+        
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)

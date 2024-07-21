@@ -54,7 +54,7 @@ class EGNN_dynamics(nn.Module):
             h = h * t
         h = h.reshape(n_batch * self._n_particles, 1)
         edge_attr = torch.sum((x[edges[0]] - x[edges[1]]) ** 2, dim=1, keepdim=True)
-        edge_attr = self.pos_embed(edge_attr)
+        edge_attr = self.pos_embed(edge_attr).squeeze(1)
         _, x_final = self.egnn(h, x, edges, edge_attr=edge_attr)
         vel = x_final - x
 

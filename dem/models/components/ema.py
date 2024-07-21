@@ -64,6 +64,9 @@ class EMAWrapper(torch.nn.Module):
 
     def forward(self, *args, **kwargs):
         return self.model(*args, **kwargs)
+    
+    def forward_e(self, *args, **kwargs):
+        return self.model.forward_e(*args, **kwargs)
 
     def copy_to_model(self) -> None:
         """Copy the shadow params to the model in-place."""

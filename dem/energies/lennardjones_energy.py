@@ -62,7 +62,7 @@ class LennardJonesPotential(Energy):
         else:
             super().__init__(dim)
         self._n_particles = n_particles
-        self._n_dims = dim // n_particles
+        self.n_spatial_dim = dim // n_particles
 
         self._eps = eps
         self._rm = rm
@@ -75,10 +75,10 @@ class LennardJonesPotential(Energy):
 
     def _energy(self, x):
         batch_shape = x.shape[: -len(self.event_shape)]
-        x = x.view(*batch_shape, self._n_particles, self._n_dims)
+        x = x.view(*batch_shape, self._n_particles, self.n_spatial_dim)
 
         dists = distances_from_vectors(
-            distance_vectors(x.view(-1, self._n_particles, self._n_dims))
+            distance_vectors(x.view(-1, self._n_particles, self.n_spatial_dim))
         )
 
         lj_energies = lennard_jones_energy_torch(dists, self._eps, self._rm)
@@ -92,7 +92,7 @@ class LennardJonesPotential(Energy):
         return lj_energies[:, None]
 
     def _remove_mean(self, x):
-        x = x.view(-1, self._n_particles, self._n_dims)
+        x = x.view(-1, self._n_particles, self.n_spatial_dim)
         return x - torch.mean(x, dim=1, keepdim=True)
 
     def _energy_numpy(self, x):

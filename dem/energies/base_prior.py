@@ -15,10 +15,10 @@ class Prior:
         )
 
     def log_prob(self, x):
-        return self.dist.log_prob(x)
+        return self.dist.log_prob(x - 10.)
 
     def sample(self, n_samples):
-        return self.dist.sample((n_samples,))
+        return self.dist.sample((n_samples,)) + 10.
 
 
 class MeanFreePrior(torch.distributions.Distribution):

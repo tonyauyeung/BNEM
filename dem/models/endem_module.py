@@ -82,6 +82,7 @@ class ENDEMLitModule(DEMLitModule):
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
+        c_loss_weight=10,
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -141,8 +142,10 @@ class ENDEMLitModule(DEMLitModule):
             self.bootstrap_mc_samples = bootstrap_mc_samples
             assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
             
-            self.energy_sigma = None
-            self.energy_mean = None
+            self.c_loss_weight = c_loss_weight
+            
+            if use_ema:
+                self.net = EMAWrapper(self.net)
             
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
@@ -208,57 +211,23 @@ class ENDEMLitModule(DEMLitModule):
         return teacher_out
     
     
-    def contrastive_loss(self, datapoints, predictions, targets, large_energy_space):
+    def contrastive_loss(self, datapoints, predictions, targets):
         if datapoints.shape[0] == 0:
             return torch.tensor(0.).to(datapoints.device)
-        pred_dist = predictions[:, None] - predictions[None, :]
-        tar_dist = targets[:, None] - targets[None, :]
-        data_dist = torch.cdist(datapoints, datapoints)
+        #pred_dist = predictions[:, None] - predictions[None, :]
+        #tar_dist = targets[:, None] - targets[None, :]
+        #data_dist = torch.cdist(datapoints, datapoints)
         
-        pred_dist = remove_diag(pred_dist)
-        tar_dist = remove_diag(tar_dist)
+        #pred_dist = remove_diag(pred_dist)
+        #tar_dist = remove_diag(tar_dist)
         
-        tar_dist -= tar_dist.mean()
+        pred_dist =  predictions
+        tar_dist = targets
+              
         pred_dist = (pred_dist - pred_dist.mean()) / pred_dist.std()
+        tar_dist = (tar_dist - tar_dist.mean()) / tar_dist.std()
         
-        if self.iter_num < 1000:
-            self.energy_sigma = tar_dist.std()
-            self.energy_mean = tar_dist.mean()
-        else:
-            self.energy_sigma = self.energy_sigma * 0.99 + tar_dist.std() * 0.01
-            self.energy_mean = self.energy_mean * 0.99 + tar_dist.mean() * 0.01
-        
-        pred_dist = (pred_dist - self.energy_mean) / self.energy_sigma
-        tar_dist /= (tar_dist.std() + 1e-5)
-        
-        
-        return torch.abs(pred_dist - tar_dist)
-        
-        '''
-        pred_dist = (pred_dist - pred_dist.min()) / \
-            (pred_dist.max() - pred_dist.min())
-        tar_dist = (tar_dist - tar_dist.min()) / \
-            (tar_dist.max() - tar_dist.min())
-        
-        return torch.abs(pred_dist - tar_dist)
-        '''
-        '''
-        loss = torch.abs(pred_dist) * (torch.logical_and(tar_dist < 0, pred_dist > 0).float())
-        loss +=  torch.abs(pred_dist) * (torch.logical_and(tar_dist > 0, pred_dist < 0).float())
-        
-        loss = remove_diag(loss)
-        data_dist = remove_diag(data_dist)
-        tar_dist = remove_diag(tar_dist)
-        
-        weight = nn.Softmax(dim=-1)(1 / (data_dist + 1e-5))
-        
-        loss = torch.sum(loss * weight, dim=-1)[large_energy_space]
-        
-        #pred_threshold = predictions[large_energy_space] - (-100)
-        
-        #loss += (pred_threshold * (pred_threshold > 0))
-        return loss
-        '''
+        return - tar_dist * pred_dist
         
     
     @torch.no_grad()
@@ -289,6 +258,7 @@ class ENDEMLitModule(DEMLitModule):
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
         predicted_energy = self.net.forward_e(times, samples)
+        '''
         if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
             with torch.no_grad():
                 t_loss = (self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples) \
@@ -332,7 +302,8 @@ class ENDEMLitModule(DEMLitModule):
             energy_est = energy_est_full
         
         else:
-            energy_est = self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples)
+        '''
+        energy_est = self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples)
             
         
         energy_clean = self.energy_function(clean_samples)
@@ -340,8 +311,11 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
         
-        error_norms = torch.abs(energy_est - predicted_energy)
-        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
+        error_norms = torch.abs(energy_est - predicted_energy).pow(2)
+
+        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean).pow(2)
+        if self.iter_num % 50 ==0:
+            print("checky pred: ", predicted_energy_clean[:5], 'target: ', energy_clean[:5])
         
         self.log(
                 "energy_loss_t0",
@@ -359,24 +333,14 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
             )
         
-        '''
-        large_energy_space = (energy_est < 100)
+        
         c_loss = self.contrastive_loss(samples, 
                                        predicted_energy,  
-                                       energy_est,
-                                       large_energy_space)
-        large_energy_space = (energy_clean < -100)
+                                       energy_est) * self.c_loss_weight
         c_loss_t0 = self.contrastive_loss(clean_samples, 
                                        predicted_energy_clean,  
-                                       energy_clean,
-                                       large_energy_space)
-        self.log(
-                "large_energy_space",
-                large_energy_space.sum() / large_energy_space.shape[0],
-                on_step=True,
-                on_epoch=True,
-                prog_bar=False,
-            )
+                                       energy_clean) * self.c_loss_weight
+
         
         self.log(
                 "contrast_loss",
@@ -385,7 +349,15 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
             )
-        '''
+        
+        self.log(
+                "contrast_loss_t0",
+                c_loss_t0.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
+        
         
         self.log(
             "largest energy",
@@ -404,8 +376,8 @@ class ENDEMLitModule(DEMLitModule):
         )
 
         
-        return self.lambda_weighter(times) ** 0.5 * error_norms + \
-            self.lambda_weighter(torch.zeros_like(times)) ** 0.5 * self.t0_regulizer_weight * error_norms_t0
+        return (error_norms.mean()) / self.lambda_weighter(times) + \
+            (error_norms_t0.mean()) * self.t0_regulizer_weight
         
     
     def get_bootstrap_loss(self, times: torch.Tensor, 

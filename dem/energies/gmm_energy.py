@@ -12,6 +12,7 @@ from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
 
 
+
 class GMM(BaseEnergyFunction):
     def __init__(
         self,
@@ -97,7 +98,10 @@ class GMM(BaseEnergyFunction):
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
 
-        return self.gmm.log_prob(samples)
+        neg_energy = self.gmm.log_prob(samples)
+        neg_energy[neg_energy < -1000.] = -1000.
+        
+        return neg_energy
 
     @property
     def dimensionality(self):
