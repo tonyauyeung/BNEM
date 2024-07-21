@@ -82,7 +82,7 @@ class ENDEMLitModule(DEMLitModule):
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
-        c_loss_weight=10,
+        c_loss_weight=1,
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -228,7 +228,7 @@ class ENDEMLitModule(DEMLitModule):
         pred_dist = (pred_dist - pred_dist.mean()) / pred_dist.std()
         tar_dist = (tar_dist - tar_dist.mean()) / tar_dist.std()
         
-        return - tar_dist * pred_dist
+        return - tar_dist * pred_dist * (targets.detach())
         
     
     @torch.no_grad()
@@ -313,10 +313,10 @@ class ENDEMLitModule(DEMLitModule):
         
         
         error_norms = torch.abs(energy_est -\
-            torch.clamp(predicted_energy, min=-1000.)).pow(2)
+            torch.clamp(predicted_energy, min=-1000.))
 
         error_norms_t0 = torch.abs(energy_clean - \
-                torch.clamp(predicted_energy_clean, min=-1000.)).pow(2)
+                torch.clamp(predicted_energy_clean, min=-1000.))
         if self.iter_num % 50 ==0:
             print("checky pred: ", predicted_energy_clean[:5], 'target: ', energy_clean[:5])
         
@@ -379,7 +379,7 @@ class ENDEMLitModule(DEMLitModule):
         )
 
         
-        return (error_norms.mean() + c_loss.mean()) / self.lambda_weighter(times) + \
+        return (error_norms.mean() + c_loss.mean()) + \
             (error_norms_t0.mean() + c_loss_t0.mean()) * self.t0_regulizer_weight
         
     
