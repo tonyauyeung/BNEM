@@ -82,7 +82,7 @@ class ENDEMLitModule(DEMLitModule):
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
-        c_loss_weight=100,
+        c_loss_weight=1,
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -166,7 +166,7 @@ class ENDEMLitModule(DEMLitModule):
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
         x0_t = noise * sigmas.unsqueeze(-1) + xt.unsqueeze(1)
-        energy_est = torch.clamp(self.energy_function(x0_t), min=-1000.)
+        energy_est = torch.clamp(self.energy_function(x0_t), min=-100.)
         if reduction:
             energy_est = torch.logsumexp(energy_est, dim=1) -\
                 torch.log(torch.tensor(num_samples)).to(xt.device)
@@ -228,7 +228,7 @@ class ENDEMLitModule(DEMLitModule):
         pred_dist = (pred_dist - pred_dist.mean()) / pred_dist.std()
         tar_dist = (tar_dist - tar_dist.mean()) / tar_dist.std()
         
-        return - tar_dist * pred_dist * (targets.detach())
+        return - tar_dist * pred_dist
         
     
     @torch.no_grad()
@@ -313,10 +313,10 @@ class ENDEMLitModule(DEMLitModule):
         
         
         error_norms = torch.abs(energy_est -\
-            torch.clamp(predicted_energy, min=-1000.))
+            torch.clamp(predicted_energy, min=-100.))
 
-        error_norms_t0 = torch.abs(energy_clean - \
-                torch.clamp(predicted_energy_clean, min=-1000.))
+        error_norms_t0 = torch.abs(torch.clamp(energy_clean, min=-100.) - \
+                torch.clamp(predicted_energy_clean, min=-100.))
         if self.iter_num % 50 ==0:
             print("checky pred: ", predicted_energy_clean[:5], 'target: ', energy_clean[:5])
         
@@ -336,14 +336,12 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
             )
         
-        large_e_range = (energy_est < -1000.)
         c_loss = self.contrastive_loss(samples, 
                                        predicted_energy,  
-                                       energy_est)[large_e_range] * self.c_loss_weight
-        large_e_range = (energy_clean < -1000.)
+                                       energy_est) * self.c_loss_weight
         c_loss_t0 = self.contrastive_loss(clean_samples, 
                                        predicted_energy_clean,  
-                                       energy_clean)[large_e_range] * self.c_loss_weight
+                                       energy_clean) * self.c_loss_weight
 
         
         self.log(
