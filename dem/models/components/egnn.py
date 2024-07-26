@@ -19,6 +19,7 @@ class EGNN_dynamics(nn.Module):
         tanh=False,
         agg="sum",
         energy_function=None,
+        add_virtual=False,
     ):
         super().__init__()
         self.egnn = EGNN(
@@ -31,6 +32,7 @@ class EGNN_dynamics(nn.Module):
             attention=attention,
             tanh=tanh,
             agg=agg,
+            has_virtual=add_virtual
         )
 
         self._n_particles = n_particles
@@ -41,10 +43,18 @@ class EGNN_dynamics(nn.Module):
         # Count function calls
         self.counter = 0
         self.pos_embed = PositionalEmbedding(32, "sinusoidal")
+        self.add_virtual = add_virtual
+        if self.add_virtual:
+            self._n_particles += 1
 
     def forward(self, t, xs):
         t = t.unsqueeze(-1)
         n_batch = xs.shape[0]
+        if self.add_virtual:
+            virtual_x = torch.mean(xs.view(n_batch, -1, self._n_dimension), 
+                                dim=1, keepdim=True)
+            xs = torch.cat([xs.view(n_batch, -1, self._n_dimension), virtual_x], dim=1)
+            xs = xs.view(n_batch, -1)
         edges = self._cast_edges2batch(self.edges, n_batch, self._n_particles)
         edges = [edges[0].to(xs.device), edges[1].to(xs.device)]
         x = xs.reshape(n_batch * self._n_particles, self._n_dimension).clone()
@@ -52,16 +62,25 @@ class EGNN_dynamics(nn.Module):
 
         if self.condition_time:
             h = h * t
-        h = h.reshape(n_batch * self._n_particles, 1)
+        if self.add_virtual:
+            h_ = torch.ones(n_batch, self._n_particles).to(xs.device)
+            h_[:, -1] = 0
+            h = torch.cat([h, h_], dim=-1)
+            h = h.reshape(n_batch * self._n_particles, 2)
+        else:
+            h = h.reshape(n_batch * self._n_particles, 1)
         edge_attr = torch.sum((x[edges[0]] - x[edges[1]]) ** 2, dim=1, keepdim=True)
         edge_attr = self.pos_embed(edge_attr).squeeze(1)
-        _, x_final = self.egnn(h, x, edges, edge_attr=edge_attr)
+        h_final, x_final = self.egnn(h, x, edges, edge_attr=edge_attr)
         vel = x_final - x
 
         vel = vel.view(n_batch, self._n_particles, self._n_dimension)
         vel = remove_mean(vel, self._n_particles, self._n_dimension)
         self.counter += 1
-        return vel.view(n_batch, self._n_particles * self._n_dimension)
+        if not self.add_virtual:
+            return vel.view(n_batch, self._n_particles * self._n_dimension)
+        else:
+            return h_final.view(n_batch, self._n_particles, -1)[:, -1]
 
     def _create_edges(self):
         rows, cols = [], []
@@ -103,8 +122,10 @@ class EGNN(nn.Module):
         tanh=False,
         coords_range=15,
         agg="sum",
+        has_virtual=False
     ):
         super().__init__()
+        self.has_virtual = has_virtual
         if out_node_nf is None:
             out_node_nf = in_node_nf
         self.hidden_nf = hidden_nf
@@ -114,6 +135,8 @@ class EGNN(nn.Module):
             self.coords_range_layer = self.coords_range_layer * 19
         # Encoder
         self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
+        if self.has_virtual:
+            self.virtual_embedding = nn.Embedding(2, self.hidden_nf)
         self.embedding_out = nn.Linear(self.hidden_nf, out_node_nf)
         for i in range(0, n_layers):
             self.add_module(
@@ -135,7 +158,10 @@ class EGNN(nn.Module):
 
     def forward(self, h, x, edges, edge_attr=None, node_mask=None, edge_mask=None):
         # Edit Emiel: Remove velocity as input
-        h = self.embedding(h)
+        if self.has_virtual:
+            h = self.embedding(h[:, :-1]) + self.virtual_embedding(h[:, -1].long())
+        else:
+            h = self.embedding(h)
         for i in range(0, self.n_layers):
             h, x, _ = self._modules["gcl_%d" % i](
                 h,

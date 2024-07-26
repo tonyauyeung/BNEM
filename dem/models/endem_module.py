@@ -225,10 +225,10 @@ class ENDEMLitModule(DEMLitModule):
         pred_dist =  predictions
         tar_dist = targets
               
-        pred_dist = (pred_dist - pred_dist.mean()) / pred_dist.std()
-        tar_dist = (tar_dist - tar_dist.mean()) / tar_dist.std()
+        pred_dist = (pred_dist - pred_dist.mean()) / (pred_dist.std() + 1e-5)
+        tar_dist = (tar_dist - tar_dist.mean()) / (tar_dist.std() + 1e-5)
         
-        return - tar_dist * pred_dist
+        return - (tar_dist * pred_dist) * tar_dist.detach()
         
     
     @torch.no_grad()
@@ -340,7 +340,6 @@ class ENDEMLitModule(DEMLitModule):
         c_loss_t0 = self.contrastive_loss(clean_samples, 
                                        predicted_energy_clean,  
                                        energy_clean) * self.c_loss_weight
-
         
         self.log(
                 "contrast_loss",
@@ -374,8 +373,6 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-
-        
         return (error_norms.mean() + c_loss.mean()) + \
             (error_norms_t0.mean() + c_loss_t0.mean()) * self.t0_regulizer_weight
         
