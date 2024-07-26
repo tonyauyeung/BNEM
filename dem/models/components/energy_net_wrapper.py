@@ -19,14 +19,15 @@ class EnergyNet(nn.Module):
             self.c = nn.Sequential(nn.Linear(1, molecule_out_dim),
                                    nn.GELU(),
                                    nn.Linear(molecule_out_dim, 1))
-        
+        self.energy_function = energy_function
 
     def forward_e(self, t, y):
         score = self.score_net(t, y)
         if not self.is_molecule:
             return score.sum(-1) + self.c
         else:
-            score = torch.cdist(score.view(score.shape[0], -1, self.energy_function.n_spatial_dim))
+            score = torch.cdist(score.view(score.shape[0], -1, self.energy_function.n_spatial_dim),
+                                score.view(score.shape[0], -1, self.energy_function.n_spatial_dim))
             score = score.view(score.shape[0], -1, 1)
             return self.c(score).sum(1)
     
