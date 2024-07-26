@@ -164,7 +164,6 @@ class ENERGY_DEMLitModule(DEMLitModule):
         predicted_score = self.forward(times, samples, with_grad=True)
 
         error_norms = (predicted_score - estimated_score).pow(2).mean(-1)
-
         score_t0 = self.energy_function.score(clean_samples)
         predicted_score_t0 = self.forward(torch.zeros_like(times), clean_samples, with_grad=True)
         

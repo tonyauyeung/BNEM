@@ -11,9 +11,12 @@ class EnergyNet(nn.Module):
         molecule_out_dim: int=32
     ):
         super(EnergyNet, self).__init__()
-        self.score_net = net(energy_function=energy_function, 
-                             add_virtual=True)
         self.is_molecule = energy_function.is_molecule
+        if self.is_molecule:
+            self.score_net = net(energy_function=energy_function, 
+                             add_virtual=True)
+        else:
+            self.score_net = net(energy_function=energy_function)
         if not self.is_molecule:
             self.c = nn.Parameter(torch.tensor(0.0))
         self.energy_function = energy_function
@@ -31,7 +34,6 @@ class EnergyNet(nn.Module):
         torch.set_grad_enabled(True)
         neg_energy = self.forward_e(t, x)
         score_x = torch.autograd.grad(neg_energy.sum(), x, create_graph=True, retain_graph=True)[0]
-        x = x.detach()
         if not with_grad:
             score_x = score_x.detach()
             x = x.detach()

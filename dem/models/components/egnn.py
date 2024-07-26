@@ -24,7 +24,7 @@ class EGNN_dynamics(nn.Module):
         super().__init__()
         self.egnn = EGNN(
             in_node_nf=1,
-            in_edge_nf=32,
+            in_edge_nf=1,
             hidden_nf=hidden_nf,
             act_fn=act_fn,
             n_layers=n_layers,
@@ -36,24 +36,26 @@ class EGNN_dynamics(nn.Module):
         )
 
         self._n_particles = n_particles
+        self.add_virtual = add_virtual
+        if self.add_virtual:
+            self._n_particles += 1
         self._n_dimension = n_dimension
         self.edges = self._create_edges()
         self._edges_dict = {}
         self.condition_time = condition_time
         # Count function calls
         self.counter = 0
-        self.pos_embed = PositionalEmbedding(32, "sinusoidal")
-        self.add_virtual = add_virtual
-        if self.add_virtual:
-            self._n_particles += 1
+        
+
 
     def forward(self, t, xs):
         t = t.unsqueeze(-1)
         n_batch = xs.shape[0]
         if self.add_virtual:
-            virtual_x = torch.mean(xs.view(n_batch, -1, self._n_dimension), 
+            virtual_x = torch.mean(xs.view(n_batch, self._n_particles - 1, self._n_dimension), 
                                 dim=1, keepdim=True)
-            xs = torch.cat([xs.view(n_batch, -1, self._n_dimension), virtual_x], dim=1)
+            xs = torch.cat([virtual_x,
+                xs.view(n_batch, -1, self._n_dimension)], dim=1)
             xs = xs.view(n_batch, -1)
         edges = self._cast_edges2batch(self.edges, n_batch, self._n_particles)
         edges = [edges[0].to(xs.device), edges[1].to(xs.device)]
@@ -63,14 +65,13 @@ class EGNN_dynamics(nn.Module):
         if self.condition_time:
             h = h * t
         if self.add_virtual:
-            h_ = torch.ones(n_batch, self._n_particles).to(xs.device)
-            h_[:, -1] = 0
-            h = torch.cat([h, h_], dim=-1)
+            h_ = torch.ones(n_batch, self._n_particles, 1).to(xs.device)
+            h_[:, 0] = 0
+            h = torch.cat([h_, h.view(n_batch, self._n_particles, 1)], dim=-1)
             h = h.reshape(n_batch * self._n_particles, 2)
         else:
             h = h.reshape(n_batch * self._n_particles, 1)
         edge_attr = torch.sum((x[edges[0]] - x[edges[1]]) ** 2, dim=1, keepdim=True)
-        edge_attr = self.pos_embed(edge_attr).squeeze(1)
         h_final, x_final = self.egnn(h, x, edges, edge_attr=edge_attr)
         vel = x_final - x
 
@@ -80,14 +81,15 @@ class EGNN_dynamics(nn.Module):
         if not self.add_virtual:
             return vel.view(n_batch, self._n_particles * self._n_dimension)
         else:
-            return h_final.view(n_batch, self._n_particles, -1)[:, -1]
+            return h_final.view(n_batch, self._n_particles, -1)[:, 0]
 
     def _create_edges(self):
         rows, cols = [], []
         for i in range(self._n_particles):
             for j in range(i + 1, self._n_particles):
-                rows.append(i)
-                cols.append(j)
+                if not self.add_virtual or i > 0:
+                    rows.append(i)
+                    cols.append(j)
                 rows.append(j)
                 cols.append(i)
         return [torch.LongTensor(rows), torch.LongTensor(cols)]
@@ -134,9 +136,11 @@ class EGNN(nn.Module):
         if agg == "mean":
             self.coords_range_layer = self.coords_range_layer * 19
         # Encoder
-        self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
         if self.has_virtual:
-            self.virtual_embedding = nn.Embedding(2, self.hidden_nf)
+            self.virtual_embedding = nn.Embedding(2, self.hidden_nf//2)
+            self.embedding = nn.Linear(in_node_nf, self.hidden_nf//2)
+        else:
+            self.embedding = nn.Linear(in_node_nf, self.hidden_nf)
         self.embedding_out = nn.Linear(self.hidden_nf, out_node_nf)
         for i in range(0, n_layers):
             self.add_module(
@@ -159,7 +163,8 @@ class EGNN(nn.Module):
     def forward(self, h, x, edges, edge_attr=None, node_mask=None, edge_mask=None):
         # Edit Emiel: Remove velocity as input
         if self.has_virtual:
-            h = self.embedding(h[:, :-1]) + self.virtual_embedding(h[:, -1].long())
+            h = torch.cat([self.embedding(h[:, 1:]),
+                           self.virtual_embedding(h[:, 0].long())], dim=-1)
         else:
             h = self.embedding(h)
         for i in range(0, self.n_layers):
