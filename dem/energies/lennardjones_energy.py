@@ -159,13 +159,13 @@ class LennardJonesEnergy(BaseEnergyFunction):
         super().__init__(dimensionality=dimensionality, is_molecule=is_molecule)
 
     def __call__(self, samples: torch.Tensor) -> torch.Tensor:
-        samples_shape = list(samples.shape[:-1])
-        samples = samples.view(-1, samples.shape[-1])
-        energy = self.lennard_jones._log_prob(samples).squeeze(-1)
-        if len(samples_shape) > 0:
+        if len(samples.shape) >= 2:
+            samples_shape = list(samples.shape[:-1])
+            samples = samples.view(-1, samples.shape[-1])
+            energy = self.lennard_jones._log_prob(samples).squeeze(-1)
             return energy.view(*samples_shape)
         else:
-            return energy
+            return self.lennard_jones._log_prob(samples).squeeze(-1).squeeze(-1)
     
     
     def setup_test_set(self):

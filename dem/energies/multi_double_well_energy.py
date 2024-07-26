@@ -77,7 +77,7 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         super().__init__(dimensionality=dimensionality, is_molecule=is_molecule)
 
     def __call__(self, samples: torch.Tensor) -> torch.Tensor:
-        if len(samples.shape) == 2:
+        if len(samples.shape) >= 2:
             samples_shape = list(samples.shape[:-1])
             samples = samples.view(-1, samples.shape[-1])
             energy =  -self.multi_double_well.energy(samples).squeeze(-1)
