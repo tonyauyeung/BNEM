@@ -165,7 +165,7 @@ class LennardJonesEnergy(BaseEnergyFunction):
             energy = self.lennard_jones._log_prob(samples).squeeze(-1)
             return energy.view(*samples_shape)
         else:
-            return self.lennard_jones._log_prob(samples).squeeze(-1).squeeze(-1)
+            return self.lennard_jones._log_prob(samples.unsqueeze(0)).squeeze(-1).squeeze(0)
     
     
     def setup_test_set(self):
