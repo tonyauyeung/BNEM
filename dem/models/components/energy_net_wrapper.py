@@ -26,8 +26,8 @@ class EnergyNet(nn.Module):
         if not self.is_molecule:
             return score.sum(-1) + self.c
         else:
-            score = torch.cdist(score.view(score.shape[0], -1, self.energy_function.n_spatial_dim),
-                                score.view(score.shape[0], -1, self.energy_function.n_spatial_dim))
+            score = score.view(score.shape[0], -1, self.energy_function.n_spatial_dim)
+            score = torch.sqrt((score[:, :, None, :] - score[:, :, :, None]).pow(2).sum(-1))
             score = score.view(score.shape[0], -1, 1)
             return self.c(score).sum(1)
     

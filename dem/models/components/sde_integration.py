@@ -43,8 +43,6 @@ def euler_maruyama_step(
     drift = sde.f(t, x) * dt
     diffusion = diffusion_scale * sde.g(t, x) * np.sqrt(dt) * torch.randn_like(x)
     
-    #add noise signal ratio filter
-    diffusion[drift.norm(-1) < diffusion.norm(-1)] = 0.
 
     # Update the state
     x_next = x + drift + diffusion
@@ -93,6 +91,7 @@ def integrate_sde(
     samples = []
 
     with conditional_no_grad(no_grad):
+        #TODO add a rollback machnism
         for t in times:
             x, f = euler_maruyama_step(
                 sde, t, x, time_range / num_integration_steps, diffusion_scale

@@ -953,7 +953,7 @@ class DEMLitModule(LightningModule):
                 self.last_energies,
                 wandb_logger,
             )
-
+        '''
         if "data_0" in outputs:
             # pad with time dimension 1
             names, dists = compute_distribution_distances(
@@ -964,7 +964,7 @@ class DEMLitModule(LightningModule):
             names = [f"{prefix}/{name}" for name in names]
             d = dict(zip(names, dists))
             self.log_dict(d, sync_dist=True)
-
+        '''
         self.eval_step_outputs.clear()
 
     def on_validation_epoch_end(self) -> None:
