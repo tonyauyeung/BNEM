@@ -373,8 +373,8 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        return (error_norms.mean() + c_loss.mean()) + \
-            (error_norms_t0.mean() + c_loss_t0.mean()) * self.t0_regulizer_weight
+        return (error_norms + c_loss) / (self.lambda_weighter(times) ** (0.5)) + \
+            (error_norms_t0 + c_loss_t0) * self.t0_regulizer_weight
         
     
     def get_bootstrap_loss(self, times: torch.Tensor, 

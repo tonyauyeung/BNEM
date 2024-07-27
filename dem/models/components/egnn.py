@@ -87,9 +87,8 @@ class EGNN_dynamics(nn.Module):
         rows, cols = [], []
         for i in range(self._n_particles):
             for j in range(i + 1, self._n_particles):
-                if not self.add_virtual or i > 0:
-                    rows.append(i)
-                    cols.append(j)
+                rows.append(i)
+                cols.append(j)
                 rows.append(j)
                 cols.append(i)
         return [torch.LongTensor(rows), torch.LongTensor(cols)]
