@@ -152,6 +152,7 @@ class DEMLitModule(LightningModule):
         ais_warmup: int = 1e4,
         ema_beta=0.95,
         ema_steps=0,
+        iden_t=False,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -321,6 +322,7 @@ class DEMLitModule(LightningModule):
 
         self.diffusion_scale = diffusion_scale
         self.init_from_prior = init_from_prior
+        self.iden_t = iden_t
         
         self.iter_num = 0
 
@@ -429,8 +431,9 @@ class DEMLitModule(LightningModule):
             )
             
             #use this for identical times in one batch
-            #t = torch.rand([])
-            #times = torch.zeros_like(times) + t
+            if self.iden_t:
+                t = torch.rand([])
+                times = torch.zeros_like(times) + t
             
             noised_samples = iter_samples + (
                 torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
@@ -1042,7 +1045,7 @@ class DEMLitModule(LightningModule):
             self.cfm_prior = self.partial_prior(device=self.device, scale=self.cfm_prior_std)
         else:
             self.cfm_prior = self.partial_prior(device=self.device, scale=self.noise_schedule.h(1) ** 0.5)
-        if 1:
+        if self.init_from_prior:
             init_states = self.prior.sample(self.num_init_samples)
         else:
             init_states = self.generate_samples(

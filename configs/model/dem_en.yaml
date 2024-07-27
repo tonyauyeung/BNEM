@@ -72,7 +72,7 @@ ais_dt: 0.1
 
 
 # initialize the buffer with samples from the prior
-init_from_prior: false
+init_from_prior: true
 
 # set to true for iDEM and false for pDEM
 use_buffer: true

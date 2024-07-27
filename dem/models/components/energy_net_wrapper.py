@@ -8,7 +8,6 @@ class EnergyNet(nn.Module):
         self, 
         net: nn.Module,
         energy_function: None,
-        molecule_out_dim: int=32
     ):
         super(EnergyNet, self).__init__()
         self.is_molecule = energy_function.is_molecule

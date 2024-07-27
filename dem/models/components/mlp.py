@@ -341,7 +341,7 @@ class MyMLP(nn.Module):
             else:
                 x = layer(x, t_emb)
 
-        return - torch.exp(x) + 10
+        return x
 
 
 class MyMLPNoSpaceEmbedding(nn.Module):
