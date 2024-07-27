@@ -332,11 +332,36 @@ class ENDEMLitModule(DEMLitModule):
 
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
-        mask = (energy_est > -10.) & (predicted_energy > -10.)
-        error_norms = torch.abs(energy_est[mask] - predicted_energy[mask])
+        threshold = -100.
+        
+        error_norms = torch.abs(torch.clamp(energy_est, min=threshold) \
+            - torch.clamp(energy_est, min=threshold))
 
-        mask = (energy_clean > -10.) & (predicted_energy_clean > -10.)
-        error_norms_t0 = torch.abs(energy_clean[mask] - predicted_energy_clean[mask])
+       
+        error_norms_t0 = torch.abs(torch.clamp(energy_clean , min=threshold)\
+            - torch.clamp(predicted_energy_clean, min=threshold))
+        
+        predicted_score = self.forward(times, samples, with_grad=True)
+        estimated_score = estimate_grad_Rt(
+                times,
+                samples,
+                self.energy_function,
+                self.noise_schedule,
+                num_mc_samples=self.num_estimator_mc_samples,
+            )
+        
+        threshold = 20
+        clip_eff = torch.clamp(threshold / \
+            torch.linalg.vector_norm(predicted_score), max=1.)
+        predicted_score = clip_eff * predicted_score
+        clip_eff = torch.clamp(threshold / \
+            torch.linalg.vector_norm(estimated_score), max=1.)
+        estimated_score = clip_eff * estimated_score
+        
+        if self.energy_function.is_molecule:
+                estimated_score = estimated_score.reshape(-1, self.energy_function.dimensionality)
+        
+        error_norms_score = torch.abs(predicted_score - estimated_score)
         
         
         self.log(
@@ -354,6 +379,13 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
             )
+        self.log(
+                "score_loss",
+                error_norms_score.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
         '''
         c_loss = self.contrastive_loss(samples, 
                                        predicted_energy,  
@@ -362,7 +394,7 @@ class ENDEMLitModule(DEMLitModule):
                                        predicted_energy_clean,  
                                        energy_clean) * self.c_loss_weight
         '''
-        c_loss = self.contrastive_loss(predicted_energy, predicted_energy_noised,  energy_est)
+        c_loss = self.contrastive_loss(predicted_energy, predicted_energy_noised,  energy_est) * 10
         
         self.log(
                 "contrast_loss",
@@ -396,7 +428,7 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        return (c_loss.mean() + error_norms_t0.mean()) / (self.lambda_weighter(times) ** 0.5) + \
+        return (c_loss.mean() + error_norms_t0.mean() + error_norms_score.mean()) / (self.lambda_weighter(times) ** 0.5) + \
             error_norms_t0.mean() * self.t0_regulizer_weight
         
     
