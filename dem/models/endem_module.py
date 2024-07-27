@@ -349,7 +349,7 @@ class ENDEMLitModule(DEMLitModule):
                 self.noise_schedule,
                 num_mc_samples=self.num_estimator_mc_samples,
             )
-        
+        '''
         threshold = 20
         clip_eff = torch.clamp(threshold / \
             torch.linalg.vector_norm(predicted_score), max=1.)
@@ -357,11 +357,14 @@ class ENDEMLitModule(DEMLitModule):
         clip_eff = torch.clamp(threshold / \
             torch.linalg.vector_norm(estimated_score), max=1.)
         estimated_score = clip_eff * estimated_score
+        '''
         
         if self.energy_function.is_molecule:
                 estimated_score = estimated_score.reshape(-1, self.energy_function.dimensionality)
         
-        error_norms_score = torch.abs(predicted_score - estimated_score)
+        predicted_score = predicted_score / torch.linalg.vector_norm(predicted_score, -1)
+        estimated_score = estimated_score / torch.linalg.vector_norm(estimated_score, -1)
+        error_norms_score = - predicted_score * estimated_score
         
         
         self.log(
