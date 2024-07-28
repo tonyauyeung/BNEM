@@ -233,8 +233,12 @@ class ENDEMLitModule(DEMLitModule):
     '''
     
     def contrastive_loss(self, predictions, noised_predictions, targets):
-        return torch.log(torch.abs(predictions - targets) / \
-            (torch.clamp(predictions - noised_predictions, min=0.) + 1e-4))
+        if len(predictions.shape) == 2:
+            return torch.log(torch.abs(predictions - targets) / \
+            (torch.abs(predictions.unsqueeze(1) - noised_predictions).mean(1).detach() + 1e-4 ))
+        elif len(predictions.shape) == 3:
+            return torch.log(torch.abs(predictions - targets).sum(-1) / \
+            (torch.abs(predictions.unsqueeze(1) - noised_predictions).mean(1).sum(-1).detach() + 1e-4 ))
         
     
     @torch.no_grad()
@@ -266,11 +270,13 @@ class ENDEMLitModule(DEMLitModule):
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
         predicted_energy = self.net.forward_e(times, samples)
         
-        dt = 1e-2 #TODO move to config
+        dt = 1e-3 #TODO move to config
         
-        noised_samples_dt = samples + (
-                torch.randn_like(samples) * self.noise_schedule.g(times).unsqueeze(-1) * dt
+        repeat_sample = samples.repeat(1, self.num_estimator_mc_samples, 1)
+        noised_samples_dt = repeat_sample + (
+                torch.randn_like(repeat_sample) * self.noise_schedule.g(times).unsqueeze(-1) * dt
             )
+        noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
 
         if self.energy_function.is_molecule:
             noised_samples_dt = remove_mean(
@@ -280,6 +286,7 @@ class ENDEMLitModule(DEMLitModule):
             )
         
         predicted_energy_noised = self.net.forward_e(times, noised_samples_dt)
+        predicted_energy_noised = predicted_energy_noised.view(predicted_energy.shape[0], -1, predicted_energy.shape[-1])
         '''
         if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
             with torch.no_grad():
@@ -338,11 +345,13 @@ class ENDEMLitModule(DEMLitModule):
             - torch.clamp(energy_est, min=threshold))
 
        
-        error_norms_t0 = torch.abs(torch.clamp(energy_clean , min=threshold)\
-            - torch.clamp(predicted_energy_clean, min=threshold))
+        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
+        error_norms_t0 = torch.clamp(error_norms_t0, max=100.)
         
         predicted_score = self.forward(times, samples, with_grad=True)
-        predicted_score_noised = self.forward(times, noised_samples_dt, with_grad=True)
+        with torch.no_grad():
+            predicted_score_noised = self.forward(times, noised_samples_dt, with_grad=True)
+            predicted_score_noised = predicted_score_noised.view(predicted_score.shape[0], -1, predicted_score.shape[-1])
         estimated_score = estimate_grad_Rt(
                 times,
                 samples,
@@ -431,7 +440,7 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        return (c_loss  + error_norms_score.sum(-1)) / (self.lambda_weighter(times) ** 0.5) + \
+        return (c_loss  + error_norms_score) / (self.lambda_weighter(times) ** 0.5) + \
             error_norms_t0.mean() * self.t0_regulizer_weight
         
     
