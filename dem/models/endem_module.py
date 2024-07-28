@@ -234,7 +234,7 @@ class ENDEMLitModule(DEMLitModule):
     
     def contrastive_loss(self, predictions, noised_predictions, targets):
         return torch.log(torch.abs(predictions - targets) / \
-            (torch.clamp(torch.abs(predictions - noised_predictions), max=10.) + 1e-4))
+            (torch.clamp(predictions - noised_predictions, min=0.) + 1e-4))
         
     
     @torch.no_grad()
@@ -332,7 +332,7 @@ class ENDEMLitModule(DEMLitModule):
 
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), clean_samples)
         
-        threshold = -100.
+        threshold = -1000.
         
         error_norms = torch.abs(torch.clamp(energy_est, min=threshold) \
             - torch.clamp(energy_est, min=threshold))
@@ -349,22 +349,18 @@ class ENDEMLitModule(DEMLitModule):
                 self.noise_schedule,
                 num_mc_samples=self.num_estimator_mc_samples,
             )
-        '''
-        threshold = 20
+        if self.energy_function.is_molecule:
+            estimated_score = estimated_score.reshape(-1, self.energy_function.dimensionality)
+
+        threshold = 1000
         clip_eff = torch.clamp(threshold / \
             torch.linalg.vector_norm(predicted_score), max=1.)
         predicted_score = clip_eff * predicted_score
         clip_eff = torch.clamp(threshold / \
             torch.linalg.vector_norm(estimated_score), max=1.)
         estimated_score = clip_eff * estimated_score
-        '''
         
-        if self.energy_function.is_molecule:
-                estimated_score = estimated_score.reshape(-1, self.energy_function.dimensionality)
-        
-        predicted_score = predicted_score / torch.linalg.vector_norm(predicted_score, -1)
-        estimated_score = estimated_score / torch.linalg.vector_norm(estimated_score, -1)
-        error_norms_score = - predicted_score * estimated_score
+        error_norms_score = torch.abs(estimated_score - predicted_score) ** 2
         
         
         self.log(
@@ -397,7 +393,7 @@ class ENDEMLitModule(DEMLitModule):
                                        predicted_energy_clean,  
                                        energy_clean) * self.c_loss_weight
         '''
-        c_loss = self.contrastive_loss(predicted_energy, predicted_energy_noised,  energy_est) * 10
+        c_loss = self.contrastive_loss(predicted_energy, predicted_energy_noised,  energy_est)
         
         self.log(
                 "contrast_loss",
@@ -431,7 +427,7 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        return (c_loss.mean() + error_norms_t0.mean() + error_norms_score.mean()) / (self.lambda_weighter(times) ** 0.5) + \
+        return (c_loss.mean()  + error_norms_score.mean()) / (self.lambda_weighter(times) ** 0.5) + \
             error_norms_t0.mean() * self.t0_regulizer_weight
         
     
