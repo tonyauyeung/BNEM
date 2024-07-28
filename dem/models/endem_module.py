@@ -279,7 +279,7 @@ class ENDEMLitModule(DEMLitModule):
                 self.energy_function.n_spatial_dim,
             )
         
-        predicted_energy_noised = self.net.forward_e(times, samples)
+        predicted_energy_noised = self.net.forward_e(times, noised_samples_dt)
         '''
         if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
             with torch.no_grad():
@@ -342,6 +342,7 @@ class ENDEMLitModule(DEMLitModule):
             - torch.clamp(predicted_energy_clean, min=threshold))
         
         predicted_score = self.forward(times, samples, with_grad=True)
+        predicted_score_noised = self.forward(times, noised_samples_dt, with_grad=True)
         estimated_score = estimate_grad_Rt(
                 times,
                 samples,
@@ -352,6 +353,7 @@ class ENDEMLitModule(DEMLitModule):
         if self.energy_function.is_molecule:
             estimated_score = estimated_score.reshape(-1, self.energy_function.dimensionality)
 
+        '''
         threshold = 1000
         clip_eff = torch.clamp(threshold / \
             torch.linalg.vector_norm(predicted_score), max=1.)
@@ -361,6 +363,8 @@ class ENDEMLitModule(DEMLitModule):
         estimated_score = clip_eff * estimated_score
         
         error_norms_score = torch.abs(estimated_score - predicted_score) ** 2
+        '''
+        error_norms_score = self.contrastive_loss(predicted_score, predicted_score_noised, estimated_score)
         
         
         self.log(
@@ -427,7 +431,7 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        return (c_loss.mean()  + error_norms_score.mean()) / (self.lambda_weighter(times) ** 0.5) + \
+        return (c_loss  + error_norms_score.sum(-1)) / (self.lambda_weighter(times) ** 0.5) + \
             error_norms_t0.mean() * self.t0_regulizer_weight
         
     
