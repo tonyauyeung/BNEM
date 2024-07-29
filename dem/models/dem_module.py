@@ -389,7 +389,7 @@ class DEMLitModule(LightningModule):
                 self.noise_schedule,
                 self.energy_function,
                 dt=self.ais_dt,
-            )[1]
+            )
 
         if self.clipper is not None and self.clipper.should_clip_scores:
             if self.energy_function.is_molecule:

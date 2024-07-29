@@ -385,7 +385,7 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
         )
         
-        if self.iter_num % 10 == 0:
+        if self.iter_num % 10 == 0 or self.iter_num < self.ais_warmup:
             predicted_score = self.forward(times, 
                                         samples, 
                                         with_grad=True)
@@ -395,12 +395,23 @@ class ENDEMLitModule(DEMLitModule):
                                                     with_grad=True)
                 predicted_score_noised = predicted_score_noised.view(predicted_score.shape[0],
                                                                     -1, predicted_score.shape[-1])
-            estimated_score = estimate_grad_Rt(
-                    times,
+            if self.iter_num > self.ais_warmup:
+                estimated_score = estimate_grad_Rt(
+                        times,
+                        samples,
+                        self.energy_function,
+                        self.noise_schedule,
+                        num_mc_samples=self.num_estimator_mc_samples,
+                    )
+            else:
+                estimated_score = ais(
                     samples,
-                    self.energy_function,
+                    times,
+                    self.num_estimator_mc_samples,
+                    self.ais_steps,
                     self.noise_schedule,
-                    num_mc_samples=self.num_estimator_mc_samples,
+                    self.energy_function,
+                    dt=self.ais_dt,
                 )
             if self.energy_function.is_molecule:
                 estimated_score = estimated_score.reshape(-1, 

@@ -112,13 +112,13 @@ def integrate_sde(
         if torch.isnan(samples[i, -1]).any():
             roll_back = False
             for j in range(1, samples.shape[1]):
-                if not torch.isnan(samples[i, samples.shape[1] - j]).all():
+                if not torch.isnan(samples[i, samples.shape[1] - j]).any():
                     samples[i, -1] = samples[i, 0]
                     roll_back = True
                     break
             if not roll_back:
                 samples[i, -1] = x0[i]
-    
+    assert not torch.isnan(samples).any()
     
     if negative_time:
         print("doing negative time descent...")
