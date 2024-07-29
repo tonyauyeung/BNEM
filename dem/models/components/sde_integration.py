@@ -106,6 +106,7 @@ def integrate_sde(
                 #x = torch.clamp(x, clip_range[0], clip_range[1])
             samples.append(x.detach())
 
+    assert not torch.isnan(x0).any()
     samples = torch.stack(samples)
     # Screen energies for each batch item
     for i in range(samples.shape[0]):
