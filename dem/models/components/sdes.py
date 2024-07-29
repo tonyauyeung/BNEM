@@ -25,10 +25,11 @@ class VEReverseSDE(torch.nn.Module):
     noise_type = "diagonal"
     sde_type = "ito"
 
-    def __init__(self, score, noise_schedule):
+    def __init__(self, score, noise_schedule, energy=None):
         super().__init__()
         self.score = score
         self.noise_schedule = noise_schedule
+        self.energy = energy
 
     def f(self, t, x):
         if t.dim() == 0:
@@ -41,6 +42,9 @@ class VEReverseSDE(torch.nn.Module):
     def g(self, t, x):
         g = self.noise_schedule.g(t)
         return g.unsqueeze(1) if g.ndim > 0 else torch.full_like(x, g)
+    
+    def e(self, t, x):
+        return self.energy(x)
 
 
 class RegVEReverseSDE(VEReverseSDE):

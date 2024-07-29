@@ -59,7 +59,7 @@ class ENERGY_DEMLitModule(DEMLitModule):
         num_negative_time_steps=100,
         ais_steps: int = 0,
         ais_dt: float = 0.1,
-        ais_warmup: int = 1e4,
+        ais_warmup: int = 1e3,
         t0_regulizer_weight=0.1,
     ) -> None:
             
@@ -126,7 +126,7 @@ class ENERGY_DEMLitModule(DEMLitModule):
     def get_loss(self, times: torch.Tensor, samples: torch.Tensor, clean_samples: torch.Tensor, train=False) -> torch.Tensor:
         #clean samples is a placeholder for training on t=0 as regularizer
         self.iter_num += 1
-        if self.ais_steps == 0 or self.iter_num < self.ais_warmup:
+        if self.ais_steps == 0 or self.iter_num > self.ais_warmup:
             estimated_score = estimate_grad_Rt(
                 times,
                 samples,

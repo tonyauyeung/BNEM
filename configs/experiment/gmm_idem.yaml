@@ -25,7 +25,7 @@ model:
     sigma_max: 1.0
 
   buffer:
-    prioritize: false
+    prioritize: TrueZZ
 
   partial_prior:
     _target_: dem.energies.base_prior.Prior

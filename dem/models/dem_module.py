@@ -238,7 +238,7 @@ class DEMLitModule(LightningModule):
         self.dim = self.energy_function.dimensionality
 
         if not self.hparams.debug_use_train_data:
-            self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule)
+            self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, self.energy_function)
         else:
             self.reverse_sde = VEReverseSDE(self.cfm_net, self.noise_schedule)
             
@@ -372,7 +372,7 @@ class DEMLitModule(LightningModule):
         if train:
             self.iter_num += 1
         #clean samples is a placeholder for training on t=0 as regularizer
-        if self.ais_steps == 0 or self.iter_num < self.ais_warmup:
+        if self.ais_steps == 0 or self.iter_num > self.ais_warmup:
             estimated_score = estimate_grad_Rt(
                 times,
                 samples,
@@ -573,7 +573,8 @@ class DEMLitModule(LightningModule):
         "Lightning hook that is called when a training epoch ends."
         if self.clipper_gen is not None:
             reverse_sde = VEReverseSDE(
-                self.clipper_gen.wrap_grad_fxn(self.ema_model), self.noise_schedule
+                self.clipper_gen.wrap_grad_fxn(self.ema_model), 
+                self.noise_schedule, self.energy_function
             )
             self.last_samples = self.generate_samples(
                 reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
@@ -581,7 +582,7 @@ class DEMLitModule(LightningModule):
             self.last_energies = self.energy_function(self.last_samples)
         else:
             reverse_sde = VEReverseSDE(
-                self.ema_model, self.noise_schedule
+                self.ema_model, self.noise_schedule, self.energy_function
             )
             self.last_samples = self.generate_samples(
                 reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
@@ -593,7 +594,7 @@ class DEMLitModule(LightningModule):
         
         self._log_energy_w2(prefix=prefix)
         self._log_data_w2(prefix=prefix)
-
+        
         if self.energy_function.is_molecule:
             self._log_dist_w2(prefix=prefix)
             self._log_dist_total_var(prefix=prefix)

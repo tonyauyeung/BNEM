@@ -91,7 +91,6 @@ def integrate_sde(
     samples = []
 
     with conditional_no_grad(no_grad):
-        #TODO add a rollback machnism
         for t in times:
             x, f = euler_maruyama_step(
                 sde, t, x, time_range / num_integration_steps, diffusion_scale
@@ -108,6 +107,19 @@ def integrate_sde(
             samples.append(x.detach())
 
     samples = torch.stack(samples)
+    # Screen energies for each batch item
+    for i in range(samples.shape[0]):
+        if torch.isnan(samples[i, -1]).any():
+            roll_back = False
+            for j in range(1, samples.shape[1]):
+                if not torch.isnan(samples[i, samples.shape[1] - j]).all():
+                    samples[i, -1] = samples[i, 0]
+                    roll_back = True
+                    break
+            if not roll_back:
+                samples[i, -1] = x0[i]
+    
+    
     if negative_time:
         print("doing negative time descent...")
         samples_langevin = negative_time_descent(

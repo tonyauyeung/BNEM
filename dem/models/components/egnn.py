@@ -81,7 +81,8 @@ class EGNN_dynamics(nn.Module):
         if not self.add_virtual:
             return vel.view(n_batch, self._n_particles * self._n_dimension)
         else:
-            return h_final.view(n_batch, self._n_particles, -1)[:, 0]
+            return h_final.view(n_batch, self._n_particles, -1)[:, 0] +\
+                - torch.linalg.vector_norm(vel, dim=-1).view(n_batch, self._n_particles)[:, 1:].sum(-1)
 
     def _create_edges(self):
         rows, cols = [], []

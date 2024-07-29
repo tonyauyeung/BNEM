@@ -4,14 +4,15 @@ import torch
 
 
 def hmc(samples, log_prob, score_func=None, step_size=0.1, num_steps=1, mass=1):
+    h = lambda x,p: -log_prob(x)+ 0.5 * mass * torch.sum(p ** 2, dim=-1)
     current_samples = samples.clone()
     momentum = torch.randn_like(samples) * mass
     # TODO: if score_func is None, then set it as the gradient of log_prob, i.e. torch.autograd.grad(log_prob(x).sum(), x)[0]
     accept_rates = []
     for _ in range(num_steps):
-        momentum += 0.5 * step_size * score_func(current_samples)
+        new_momentum = momentum + 0.5 * step_size * score_func(current_samples)
         new_samples = current_samples.clone() + step_size * momentum
-        alpha = torch.clamp(torch.exp(log_prob(new_samples) - log_prob(current_samples)), max=1)
+        alpha = torch.clamp(torch.exp(h(current_samples, momentum) - h(new_samples, new_momentum)), max=1)
         mask = torch.rand_like(alpha) < alpha
         current_samples = torch.where(mask.unsqueeze(-1), new_samples, current_samples)
         accept_rates.append(mask.detach().sum() / np.prod(mask.shape))
