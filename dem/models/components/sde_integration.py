@@ -109,17 +109,17 @@ def integrate_sde(
     assert not torch.isnan(x0).any()
     samples = torch.stack(samples)
     # Screen energies for each batch item
-    for i in range(samples.shape[0]):
-        if torch.isnan(samples[i, -1]).any():
+    for i in range(samples.shape[1]):
+        if torch.isnan(samples[-1, i]).any():
             roll_back = False
-            for j in range(1, samples.shape[1]):
-                if not torch.isnan(samples[i, samples.shape[1] - j]).any():
-                    samples[i, -1] = samples[i, 0]
+            for j in range(1, samples.shape[0]):
+                if not torch.isnan(samples[samples.shape[1] - j, i]).any():
+                    samples[-1, i] = samples[samples.shape[1] - j, i]
                     roll_back = True
                     break
             if not roll_back:
-                samples[i, -1] = x0[i]
-    assert not torch.isnan(samples).any()
+                samples[-1, i] = x0[i]
+    assert not torch.isnan(samples[-1]).any()
     
     if negative_time:
         print("doing negative time descent...")

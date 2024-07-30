@@ -76,7 +76,7 @@ class ENDEMLitModule(DEMLitModule):
         num_negative_time_steps=100,
         ais_steps: int = 0,
         ais_dt: float = 0.1,
-        ais_warmup: int = 1e3,
+        ais_warmup: int = 100,
         t0_regulizer_weight=0.01,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
@@ -256,7 +256,7 @@ class ENDEMLitModule(DEMLitModule):
         self.iter_num += 1
         
         
-        energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples)
+        energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
         
         dt = 1e-2 #TODO move to config
@@ -264,7 +264,7 @@ class ENDEMLitModule(DEMLitModule):
         
         repeat_sample = samples.unsqueeze(1).repeat(1, noised_samples_num, 1)
         noised_samples_dt = repeat_sample + (
-                torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None] * dt
+                torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None].pow(2) * dt
             )
         noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
 
@@ -402,7 +402,7 @@ class ENDEMLitModule(DEMLitModule):
                         self.energy_function,
                         self.noise_schedule,
                         num_mc_samples=self.num_estimator_mc_samples,
-                    )
+                    ).detach()
             else:
                 estimated_score = ais(
                     samples,
@@ -412,7 +412,7 @@ class ENDEMLitModule(DEMLitModule):
                     self.noise_schedule,
                     self.energy_function,
                     dt=self.ais_dt,
-                )
+                ).detach()
             if self.energy_function.is_molecule:
                 estimated_score = estimated_score.reshape(-1, 
                                                         self.energy_function.dimensionality)
@@ -429,11 +429,14 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
             )
             
-            return c_loss + error_norms + error_norms_score
+            return error_norms_score
+        
         else:
-            return c_loss + error_norms + self.t0_regulizer_weight * error_norms_t0
-        
-        
+            energy_error_norm = (predicted_energy - energy_est).pow(2)
+            return torch.clamp(energy_error_norm, max=1000.) + error_norms
+
+            
+            
     
     def get_bootstrap_loss(self, times: torch.Tensor, 
                  samples: torch.Tensor, 

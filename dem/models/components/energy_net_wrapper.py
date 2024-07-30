@@ -13,19 +13,20 @@ class EnergyNet(nn.Module):
         self.is_molecule = energy_function.is_molecule
         if self.is_molecule:
             self.score_net = net(energy_function=energy_function, 
-                             add_virtual=True)
+                             add_virtual=False)
         else:
             self.score_net = net(energy_function=energy_function)
-        if not self.is_molecule:
-            self.c = nn.Parameter(torch.tensor(0.0))
         self.energy_function = energy_function
 
     def forward_e(self, t, y):
         score = self.score_net(t, y)
-        if not self.is_molecule:
+        if not self.energy_function.is_molecule:
             return - torch.linalg.vector_norm(score, dim=-1) + self.c
         else:
-            return score.squeeze(-1)
+            score = score.view(score.shape[0], 
+                               self.energy_function.n_particles,
+                               self.energy_function.n_spatial_dim)
+            return - torch.linalg.vector_norm(score, dim=-1).sum(-1) + self.c
     
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """obtain score prediction of f_\theta(x, t) w.r.t. x"""

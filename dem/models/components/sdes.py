@@ -37,6 +37,13 @@ class VEReverseSDE(torch.nn.Module):
             t = t * torch.ones(x.shape[0]).to(x.device)
 
         score = self.score(t, x)
+        if self.energy.is_molecule:
+            score = score.view(-1, self.energy.n_particles, self.energy.n_spatial_dim)
+            clip = 20.
+            eff = torch.clamp(clip/torch.linalg.vector_norm(score, dim=-1), max=1.).unsqueeze(-1)
+            score = score * eff
+            score = score.view(-1, self.energy.n_particles * self.energy.n_spatial_dim)
+        
         return self.g(t, x).pow(2) * score
 
     def g(self, t, x):

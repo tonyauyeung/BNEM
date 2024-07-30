@@ -502,7 +502,6 @@ class DEMLitModule(LightningModule):
             self.net.update_ema()
             if self.should_train_cfm(batch_idx):
                 self.cfm_net.update_ema()
-        self.EMA.step_ema(self.ema_model, self.net)
 
     def generate_samples(
         self,
@@ -515,7 +514,7 @@ class DEMLitModule(LightningModule):
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
         samples = self.prior.sample(num_samples)
-
+        self.EMA.step_ema(self.ema_model, self.net)
         return self.integrate(
             reverse_sde=reverse_sde,
             samples=samples,
@@ -615,7 +614,7 @@ class DEMLitModule(LightningModule):
             data_set = self.energy_function.sample_test_set(self.eval_batch_size)
             generated_samples, generated_energies = self.buffer.get_last_n_inserted(self.eval_batch_size)
         energies = self.energy_function(self.energy_function.normalize(data_set))
-        energy_w2 = pot.emd2_1d(energies.cpu().numpy(), generated_energies.cpu().numpy())
+        energy_w2 = pot.emd2_1d(energies.cpu().numpy(), generated_energies.cpu().numpy())#is there something wrong here? weird large number
 
         self.log(
             f"{prefix}/energy_w2",
