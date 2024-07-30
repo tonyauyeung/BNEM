@@ -17,6 +17,7 @@ class EnergyNet(nn.Module):
         else:
             self.score_net = net(energy_function=energy_function)
         self.energy_function = energy_function
+        self.c = nn.Parameter(torch.tensor(0.0))
 
     def forward_e(self, t, y):
         score = self.score_net(t, y)
