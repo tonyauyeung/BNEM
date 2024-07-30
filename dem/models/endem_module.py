@@ -224,10 +224,10 @@ class ENDEMLitModule(DEMLitModule):
     def norm_loss(self, predictions, noised_predictions, targets):
         if len(predictions.shape) == 1:
             return torch.log((predictions - targets).pow(2) / \
-            (torch.abs(predictions.unsqueeze(1) - noised_predictions).mean(1).detach() + 1e-4))
+            ((predictions.unsqueeze(1) - noised_predictions).pow(2).mean(1).detach() + 1e-4))
         elif len(predictions.shape) == 2:
-            return torch.log((predictions - targets).pow(2).sum(-1) / \
-            (torch.abs(predictions.unsqueeze(1) - noised_predictions).mean(1).sum(-1).detach() + 1e-4))
+            return torch.log(torch.linalg.vector_norm(predictions - targets, dim=-1) / \
+            (torch.linalg.vector_norm(predictions.unsqueeze(1) - noised_predictions, dim=-1).mean(1).detach() + 1e-4))
         
     
     @torch.no_grad()
