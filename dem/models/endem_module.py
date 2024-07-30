@@ -433,7 +433,7 @@ class ENDEMLitModule(DEMLitModule):
         
         else:
             energy_error_norm = (predicted_energy - energy_est).pow(2)
-            return torch.clamp(energy_error_norm, max=1000.) + error_norms
+            return torch.clamp(energy_error_norm, max=1000.) + c_loss
 
             
             

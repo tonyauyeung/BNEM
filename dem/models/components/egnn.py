@@ -19,6 +19,7 @@ class EGNN_dynamics(nn.Module):
         tanh=False,
         agg="sum",
         energy_function=None,
+        energy=False,
         add_virtual=False,
     ):
         super().__init__()
@@ -43,6 +44,7 @@ class EGNN_dynamics(nn.Module):
         self.edges = self._create_edges()
         self._edges_dict = {}
         self.condition_time = condition_time
+        self.energy = energy
         # Count function calls
         self.counter = 0
         
@@ -79,7 +81,10 @@ class EGNN_dynamics(nn.Module):
         vel = remove_mean(vel, self._n_particles, self._n_dimension)
         self.counter += 1
         if not self.add_virtual:
-            return vel.view(n_batch, self._n_particles * self._n_dimension)
+            if not self.energy:
+                return vel.view(n_batch, self._n_particles * self._n_dimension)
+            else:
+                return vel.view(n_batch, self._n_particles * self._n_dimension), h_final
         else:
             out = h_final.view(n_batch, self._n_particles, -1)[:, 0].sum(-1)
             return out
