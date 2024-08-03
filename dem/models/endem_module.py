@@ -77,12 +77,12 @@ class ENDEMLitModule(DEMLitModule):
         ais_steps: int = 0,
         ais_dt: float = 0.1,
         ais_warmup: int = 100,
-        t0_regulizer_weight=0.01,
+        t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 100,
         epsilon_train=1e-4,
-        c_loss_weight=100,
+        prioritize_warmup=1e4
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -141,9 +141,9 @@ class ENDEMLitModule(DEMLitModule):
             self.epsilon_train = epsilon_train
             self.bootstrap_warmup = bootstrap_warmup
             self.bootstrap_mc_samples = bootstrap_mc_samples
+            self.prioritize_warmup = prioritize_warmup
             assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
             
-            self.c_loss_weight = c_loss_weight
             
             if use_ema:
                 self.net = EMAWrapper(self.net)
@@ -255,30 +255,14 @@ class ENDEMLitModule(DEMLitModule):
         
         self.iter_num += 1
         
+        if self.iter_num == self.prioritize_warmup:
+            self.buffer.prioritize = False
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
         
-        dt = 1e-2 #TODO move to config
-        noised_samples_num = 10
-        
-        repeat_sample = samples.unsqueeze(1).repeat(1, noised_samples_num, 1)
-        noised_samples_dt = repeat_sample + (
-                torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None].pow(2) * dt
-            )
-        noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
-
-        if self.energy_function.is_molecule:
-            noised_samples_dt = remove_mean(
-                noised_samples_dt,
-                self.energy_function.n_particles,
-                self.energy_function.n_spatial_dim,
-            )
-        
-        predicted_energy_noised = self.net.forward_e(times.repeat(noised_samples_num), noised_samples_dt)
-        predicted_energy_noised = predicted_energy_noised.view(predicted_energy.shape[0], -1)
-        
-        if self.bootstrap_scheduler is not None and train and self.train_stage == 1:
+        should_bootstrap = (self.bootstrap_scheduler is not None and train and self.train_stage == 1)
+        if should_bootstrap:
             with torch.no_grad():
                 t_loss = (self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples) \
                           - predicted_energy).pow(2) * self.lambda_weighter(times)
@@ -286,18 +270,19 @@ class ENDEMLitModule(DEMLitModule):
                 i = self.bootstrap_scheduler.t_to_index(times.cpu())
                 u = self.bootstrap_scheduler.sample_t(i - 1)
                 u = torch.clamp(u,min=self.epsilon_train).float().to(samples.device)
+                times = torch.clamp(times,min=self.epsilon_train).float().to(samples.device)
                 
+                u_samples = clean_samples + torch.randn_like(clean_samples) * self.noise_schedule.h(u).sqrt().unsqueeze(-1)
+                u_energy_est = self.energy_estimator(u_samples, u, 
+                                                     self.num_estimator_mc_samples, 
+                                                     reduction=True)
+                u_predicted_energy = self.net.forward_e(u, u_samples) 
                 
-                
-                u_energy_est = self.bootstrap_energy_estimator(samples, times, u,
-                                                            self.num_estimator_mc_samples,
-                                                            self.ema_model, reduction=True)
-                u_predicted_energy = self.net.forward_e(u, samples) 
                 u_loss = (u_energy_est - u_predicted_energy).pow(2) * self.lambda_weighter(u)
-
             
             bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
                                          > u_loss)[0]
+            u_loss = u_loss / self.lambda_weighter(u) + t_loss / self.lambda_weighter(times)
             self.log(
                 "bootstrap_accept_rate",
                 bootstrap_index.shape[0] / t_loss.shape[0],
@@ -305,6 +290,14 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
             )
+            self.log(
+                "u_loss",
+                u_loss.mean(),
+                on_step=False,
+                on_epoch=True,
+                prog_bar=False,
+            )
+            
             bootstrap_energy_est = self.bootstrap_energy_estimator(samples[bootstrap_index], 
                                                                    times[bootstrap_index], u[bootstrap_index], 
                                                                      self.bootstrap_mc_samples,
@@ -334,12 +327,9 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
         
-        error_norms = self.norm_loss(predicted_energy, 
-                                     predicted_energy_noised,
-                                     energy_est)
+        energy_error_norm = (predicted_energy - energy_est).pow(2)
        
         error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
-        error_norms_t0 = torch.clamp(error_norms_t0, max=1000.)
 
         
         
@@ -353,17 +343,7 @@ class ENDEMLitModule(DEMLitModule):
         
         self.log(
                 "energy_loss",
-                error_norms.mean(),
-                on_step=True,
-                on_epoch=True,
-                prog_bar=False,
-            )
-
-        c_loss = self.contrastive_loss(predicted_energy, energy_est)
-        
-        self.log(
-                "contrast_loss",
-                c_loss.mean(),
+                energy_error_norm.mean(),
                 on_step=True,
                 on_epoch=True,
                 prog_bar=False,
@@ -384,7 +364,38 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
+        if self.buffer.prioritize:
+            full_loss = torch.clamp(energy_error_norm, max=1000.) \
+                + self.t0_regulizer_weight * torch.clamp(error_norms_t0, max=1000.)
+        else:
+            full_loss = energy_error_norm + self.t0_regulizer_weight * error_norms_t0
+        if should_bootstrap:
+            full_loss += u_loss
+        return full_loss
+
+        '''
+        dt = 1e-2 #TODO move to config
+        noised_samples_num = 10
         
+        repeat_sample = samples.unsqueeze(1).repeat(1, noised_samples_num, 1)
+        noised_samples_dt = repeat_sample + (
+                torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None].pow(2) * dt
+            )
+        noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
+
+        if self.energy_function.is_molecule:
+            noised_samples_dt = remove_mean(
+                noised_samples_dt,
+                self.energy_function.n_particles,
+                self.energy_function.n_spatial_dim,
+            )
+        '''
+        #predicted_energy_noised = self.net.forward_e(times.repeat(noised_samples_num), noised_samples_dt)
+        #predicted_energy_noised = predicted_energy_noised.view(predicted_energy.shape[0], -1)
+        #error_norms = self.norm_loss(predicted_energy, 
+        #                             predicted_energy_noised,
+        #                             energy_est)
+        '''
         if self.iter_num % 10 == 0 or self.iter_num < self.ais_warmup:
             predicted_score = self.forward(times, 
                                         samples, 
@@ -430,14 +441,14 @@ class ENDEMLitModule(DEMLitModule):
             )
             
             return error_norms_score
+        '''
+        #else:
         
-        else:
-            energy_error_norm = (predicted_energy - energy_est).pow(2)
-            return torch.clamp(energy_error_norm, max=1000.) + c_loss
+        # + c_loss
 
             
             
-    
+    '''
     def get_bootstrap_loss(self, times: torch.Tensor, 
                  samples: torch.Tensor, 
                  clean_samples: torch.Tensor) -> torch.Tensor:
@@ -471,7 +482,7 @@ class ENDEMLitModule(DEMLitModule):
         #return error_norms + self.t0_regulizer_weight * error_norms_t0
         return self.lambda_weighter(t) ** 0.5 * error_norms  + \
              error_norms_t0 * self.t0_regulizer_weight
-        
+    '''
         
 
         

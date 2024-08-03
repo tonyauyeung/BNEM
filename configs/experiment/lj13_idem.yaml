@@ -50,7 +50,7 @@ model:
   # num_samples_to_sample_from_buffer: 5120
   diffusion_scale: 0.9
   num_samples_to_generate_per_epoch: 1000
-  num_samples_to_sample_from_buffer: 256
+  num_samples_to_sample_from_buffer: 128
 
   init_from_prior: true
 
@@ -58,4 +58,5 @@ model:
 
   nll_integration_method: dopri5
   num_estimator_mc_samples: 1000
-  eval_batch_size: 512
+  eval_batch_size: 128
+  #TODO find ways to eval 1000 test without CUDA outof memory
