@@ -163,11 +163,11 @@ class ENERGY_DEMLitModule(DEMLitModule):
 
         predicted_score = self.forward(times, samples, with_grad=True)
 
-        error_norms = torch.abs(predicted_score - estimated_score).mean(-1)
+        error_norms = torch.abs(predicted_score - estimated_score).mean(-1).pow(2)
         score_t0 = self.energy_function.score(clean_samples)
         predicted_score_t0 = self.forward(torch.zeros_like(times), clean_samples, with_grad=True)
         
-        error_norms_t0 = torch.abs(predicted_score_t0 - score_t0).mean(-1)
+        error_norms_t0 = torch.abs(predicted_score_t0 - score_t0).mean(-1).pow(2)
         
-        return error_norms / (self.lambda_weighter(times) ** 0.5) + \
+        return error_norms * self.lambda_weighter(times) + \
             self.t0_regulizer_weight * error_norms_t0

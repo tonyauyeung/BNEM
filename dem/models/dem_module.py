@@ -149,7 +149,7 @@ class DEMLitModule(LightningModule):
         num_negative_time_steps=100,
         ais_steps: int = 5,
         ais_dt: float = 0.1,
-        ais_warmup: int = 1e4,
+        ais_warmup: int = 0,
         ema_beta=0.95,
         ema_steps=0,
         iden_t=False,
@@ -410,11 +410,8 @@ class DEMLitModule(LightningModule):
         predicted_score = self.forward(times, samples)
 
         error_norms = (predicted_score - estimated_score).pow(2).mean(-1)
-        #error_norms = torch.abs(predicted_score - estimated_score).mean(-1)
 
-        #return (self.lambda_weighter(times) ** 0.5) * error_norms
-        #return self.lambda_weighter(times) * error_norms
-        return error_norms / (self.lambda_weighter(times) + 1e-3)
+        return error_norms * self.lambda_weighter(times)
 
     def training_step(self, batch, batch_idx):
         loss = 0.0

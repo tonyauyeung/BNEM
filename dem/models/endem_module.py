@@ -277,12 +277,10 @@ class ENDEMLitModule(DEMLitModule):
                                                      self.num_estimator_mc_samples, 
                                                      reduction=True)
                 u_predicted_energy = self.net.forward_e(u, u_samples) 
-                
                 u_loss = (u_energy_est - u_predicted_energy).pow(2) * self.lambda_weighter(u)
             
             bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
                                          > u_loss)[0]
-            u_loss = u_loss / self.lambda_weighter(u) + t_loss / self.lambda_weighter(times)
             self.log(
                 "bootstrap_accept_rate",
                 bootstrap_index.shape[0] / t_loss.shape[0],
@@ -366,7 +364,7 @@ class ENDEMLitModule(DEMLitModule):
         )
         if self.buffer.prioritize:
             full_loss = torch.clamp(energy_error_norm, max=1000.) \
-                + self.t0_regulizer_weight * torch.clamp(error_norms_t0, max=1000.)
+                    + self.t0_regulizer_weight * torch.clamp(error_norms_t0, max=1000.)
         else:
             full_loss = energy_error_norm + self.t0_regulizer_weight * error_norms_t0
         if should_bootstrap:

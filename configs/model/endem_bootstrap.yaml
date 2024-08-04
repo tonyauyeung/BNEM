@@ -32,7 +32,14 @@ buffer:
   device: ${trainer.accelerator}
   sample_with_replacement: True
   fill_buffer_during_init: False
-  prioritize: False
+  prioritize: True
+
+clipper_gen:
+  _target_: dem.models.components.clipper.Clipper
+  should_clip_scores: True
+  should_clip_log_rewards: False
+  max_score_norm: 20
+  min_log_reward: null
 
 score_scaler: null
 
@@ -85,6 +92,8 @@ num_samples_to_save: 100000
 negative_time: false
 num_negative_time_steps: 100
 
+ais_steps: 10
+ais_dt: 0.1
 
 #turn on the below 3 config for eval mode
 nll_with_cfm: false

@@ -86,7 +86,7 @@ ais_dt: 0.1
 
 
 #turn on the below 3 config for eval mode
-nll_with_cfm: false
+nll_with_cfm: true
 # train cfm only on train data and not dem
-debug_use_train_data: false
-logz_with_cfm: false
+debug_use_train_data: true
+logz_with_cfm: true
