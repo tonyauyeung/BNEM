@@ -374,7 +374,56 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        full_loss = self.t0_regulizer_weight * error_norms_t0 + energy_error_norm / self.lambda_weighter(times)
+        
+        full_loss = self.t0_regulizer_weight * error_norms_t0 + energy_error_norm
+        full_loss = full_loss.mean()
+        
+        if (energy_clean > 1000).any():
+            predicted_score = self.forward(times, 
+                                            samples, 
+                                            with_grad=True)
+            with torch.no_grad():
+                dt = 1e-2 #TODO move to config
+                noised_samples_num = 10
+                
+                repeat_sample = samples.unsqueeze(1).repeat(1, noised_samples_num, 1)
+                noised_samples_dt = repeat_sample + (
+                        torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None].pow(2) * dt
+                    )
+                noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
+                
+                predicted_score_noised = self.forward(times.repeat(noised_samples_num), 
+                                                    noised_samples_dt, 
+                                                    with_grad=True)
+                predicted_score_noised = predicted_score_noised.view(predicted_score.shape[0],
+                                                                    -1, predicted_score.shape[-1])
+
+                estimated_score = estimate_grad_Rt(
+                        times,
+                        samples,
+                        self.energy_function,
+                        self.noise_schedule,
+                        num_mc_samples=self.num_estimator_mc_samples,
+                    ).detach()
+            
+            if self.energy_function.is_molecule:
+                estimated_score = estimated_score.reshape(-1, 
+                                                        self.energy_function.dimensionality)
+
+            error_norms_score = self.norm_loss(predicted_score, 
+                                            predicted_score_noised, 
+                                            estimated_score)
+            
+            self.log(
+                "score_loss",
+                error_norms_score.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
+            full_loss += error_norms_score[energy_clean > 1000].mean()
+        
+        
         return full_loss
 
         '''
