@@ -181,7 +181,7 @@ class MultiEarlyStopping(Callback):
             "wait_count": self.wait_count,
             "stopped_epoch": self.stopped_epoch,
             "best_score": self.best_score,
-            "patience": self.patience,
+            "patience": self.patience[self.train_stage],
         }
 
     @override
@@ -189,7 +189,7 @@ class MultiEarlyStopping(Callback):
         self.wait_count = state_dict["wait_count"]
         self.stopped_epoch = state_dict["stopped_epoch"]
         self.best_score = state_dict["best_score"]
-        self.patience = state_dict["patience"]
+        self.patience = state_dict["patience"][self.train_stage]
 
     def _should_skip_check(self, trainer: "pl.Trainer") -> bool:
         from lightning.pytorch.trainer.states import TrainerFn
@@ -269,7 +269,7 @@ class MultiEarlyStopping(Callback):
             self.wait_count = 0
         else:
             self.wait_count += 1
-            if self.wait_count >= self.patience:
+            if self.wait_count >= self.patience[self.train_stage]:
                 should_stop = True
                 reason = (
                     f"Monitored metric {self.monitor[self.train_stage]} did not improve in the last {self.wait_count} records."

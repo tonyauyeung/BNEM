@@ -80,9 +80,10 @@ class ENDEMLitModule(DEMLitModule):
         t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
-        bootstrap_mc_samples: int = 100,
+        bootstrap_mc_samples: int = 500,
         epsilon_train=1e-4,
-        prioritize_warmup=1e4
+        prioritize_warmup=1e3,
+        iden_t=False
     ) -> None:
             
             net = partial(EnergyNet, net=net)
@@ -162,7 +163,7 @@ class ENDEMLitModule(DEMLitModule):
             return ais(xt, t, 
                        num_samples, self.ais_steps, 
                        self.noise_schedule, self.energy_function, 
-                       dt=self.ais_dt, mode='energy', reduction=False)
+                       dt=self.ais_dt, mode='energy', reduction=reduction)
         sigmas = self.noise_schedule.h(t).unsqueeze(1).sqrt()
         data_shape = list(xt.shape)[1:]
         noise = torch.randn(xt.shape[0], num_samples, *data_shape).to(xt.device)
@@ -253,16 +254,13 @@ class ENDEMLitModule(DEMLitModule):
                  clean_samples: torch.Tensor,
                  train=False) -> torch.Tensor:
         
-        self.iter_num += 1
-        
-        if self.iter_num == self.prioritize_warmup:
-            self.buffer.prioritize = False
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
         
         should_bootstrap = (self.bootstrap_scheduler is not None and train and self.train_stage == 1)
-        if should_bootstrap:
+        if should_bootstrap and self.iter_num % 10 != 1:
+            self.iden_t = True
             with torch.no_grad():
                 t_loss = (self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples) \
                           - predicted_energy).pow(2) * self.lambda_weighter(times)
@@ -276,7 +274,7 @@ class ENDEMLitModule(DEMLitModule):
                 u_energy_est = self.energy_estimator(u_samples, u, 
                                                      self.num_estimator_mc_samples, 
                                                      reduction=True)
-                u_predicted_energy = self.net.forward_e(u, u_samples) 
+                u_predicted_energy = self.net.forward_e(u, u_samples)
                 u_loss = (u_energy_est - u_predicted_energy).pow(2) * self.lambda_weighter(u)
             
             bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
@@ -288,12 +286,14 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
             )
+            u_loss = self.contrastive_loss(u_predicted_energy,
+                                           u_energy_est)
             self.log(
                 "u_loss",
                 u_loss.mean(),
                 on_step=False,
                 on_epoch=True,
-                prog_bar=False,
+                prog_bar=True,
             )
             
             bootstrap_energy_est = self.bootstrap_energy_estimator(samples[bootstrap_index], 
@@ -325,8 +325,7 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
         
-        energy_error_norm = (predicted_energy - energy_est).pow(2)
-       
+        energy_error_norm = (predicted_energy - energy_est).pow(2) 
         error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
 
         
@@ -338,14 +337,27 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
             )
+        if not self.buffer.prioritize:
+            self.log(
+                    "energy_loss",
+                    energy_error_norm.mean(),
+                    on_step=True,
+                    on_epoch=True,
+                    prog_bar=False,
+                )
+        else:
+            self.log(
+                    "energy_loss",
+                    torch.tensor(1e8).to(energy_error_norm.device),
+                    on_step=True,
+                    on_epoch=True,
+                    prog_bar=False,
+                )
+            
+        self.iter_num += 1
         
-        self.log(
-                "energy_loss",
-                energy_error_norm.mean(),
-                on_step=True,
-                on_epoch=True,
-                prog_bar=False,
-            )
+        if self.iter_num == self.prioritize_warmup:
+            self.buffer.prioritize = False
         
         self.log(
             "largest energy",
@@ -362,13 +374,7 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        if self.buffer.prioritize:
-            full_loss = torch.clamp(energy_error_norm, max=1000.) \
-                    + self.t0_regulizer_weight * torch.clamp(error_norms_t0, max=1000.)
-        else:
-            full_loss = energy_error_norm + self.t0_regulizer_weight * error_norms_t0
-        if should_bootstrap:
-            full_loss += u_loss
+        full_loss = self.t0_regulizer_weight * error_norms_t0 + energy_error_norm
         return full_loss
 
         '''

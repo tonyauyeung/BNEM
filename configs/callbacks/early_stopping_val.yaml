@@ -1,12 +1,12 @@
 # https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.EarlyStopping.html
 
-multi_early_stop:
-  _target_: dem.callbacks.earlystop.MultiEarlyStopping
-  monitor: ["energy_loss", "val/energy_w2"] # quantity to be monitored, must be specified !!!
+early_stopping:
+  _target_: lightning.pytorch.callbacks.EarlyStopping
+  monitor: val/loss_epoch # quantity to be monitored, must be specified !!!
   min_delta: 0. # minimum change in the monitored quantity to qualify as an improvement
-  patience: [5, 10] # number of checks with no improvement after which training will be stopped
+  patience: 10 # number of checks with no improvement after which training will be stopped
   verbose: True # verbosity mode
-  mode: ["min", "min"] # "max" means higher metric value is better, can be also "min"
+  mode: "min" # "max" means higher metric value is better, can be also "min"
   strict: True # whether to crash the training if monitor is not found in the validation metrics
   check_finite: False # when set True, stops training when the monitor becomes NaN or infinite
   stopping_threshold: null # stop training immediately once the monitored quantity reaches this threshold

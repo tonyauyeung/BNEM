@@ -16,8 +16,11 @@ pip install -r requirements.txt
 To run an experiment, e.g., GMM with ENDEM, you can run on the command line
 
 ```bash
-#model=dem/dem_en/endem/endem_bootstrap
-#export WANDB_ENTITY=Energy-basedDEM
+#model=dem
+#model=dem_en
+#model=endem
+#model=endem_bootstrap callbacks=bootstrap
+export WANDB_ENTITY=Energy-basedDEM
 python dem/train.py experiment=gmm_idem model=endem
 ```
 you could modify `configs/logger/wandb.yaml` to specify the name of your project.
