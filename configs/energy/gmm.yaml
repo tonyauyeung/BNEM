@@ -12,5 +12,5 @@ plot_samples_epoch_period: 1
 should_unnormalize: true
 data_normalization_factor: 50
 
-#data_path_train: "/home/bq216/codes/beidem/dem_results/logs/train/runs/2024-08-03_12-24-31/samples_100000.pt"
+#data_path_train: "/home/bq216/codes/beidem/dem_results/logs/train/runs/2024-08-05_03-14-45/samples_100000.pt"
 #data_path_val: ${energy.data_path_train}

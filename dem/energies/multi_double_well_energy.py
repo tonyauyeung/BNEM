@@ -84,15 +84,22 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
             return energy.view(*samples_shape)
         else:
             return - self.multi_double_well.energy(samples).squeeze(-1).squeeze(-1)
+    
+    def load_data(self, path, size=None):
+        if path[-3:] == "npy":
+            samples = np.load(path, allow_pickle=True)
+            if size is not None:
+                samples = samples[0][-size: ]
+        else:
+            samples = torch.load(path)
+        return samples
 
     def setup_test_set(self):
         if self.data_from_efm:
-            data = np.load(self.data_path, allow_pickle=True)
+            data = self.load_data(self.data_path)
 
         else:
-            all_data = np.load(self.data_path, allow_pickle=True)
-            data = all_data[0][-self.test_set_size :]
-            del all_data
+            data = self.load_data(sellf.data_path, size=self.test_set_size)
 
         data = remove_mean(torch.tensor(data), self.n_particles, self.n_spatial_dim).to(
             self.device
@@ -103,11 +110,9 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
     def setup_train_set(self):
         if self.data_from_efm:
             data = np.load(self.data_path_train, allow_pickle=True)
-
+            data = self.load_data(self.data_path_train)
         else:
-            all_data = np.load(self.data_path, allow_pickle=True)
-            data = all_data[0][: self.train_set_size]
-            del all_data
+            data = self.load_data(self.data_path, size=-self.train_set_size)
 
         data = remove_mean(torch.tensor(data), self.n_particles, self.n_spatial_dim).to(
             self.device
@@ -117,12 +122,9 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
     def setup_val_set(self):
         if self.data_from_efm:
-            data = np.load(self.data_path_val, allow_pickle=True)
-
+            data = self.load_data(self.data_path_val)
         else:
-            all_data = np.load(self.data_path, allow_pickle=True)
-            data = all_data[0][-self.test_set_size - self.val_set_size : -self.test_set_size]
-            del all_data
+            data = self.load_data(self.data_path, size=self.test_set_size)
 
         data = remove_mean(torch.tensor(data), self.n_particles, self.n_spatial_dim).to(
             self.device

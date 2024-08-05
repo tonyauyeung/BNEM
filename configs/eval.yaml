@@ -11,7 +11,7 @@ defaults:
   - paths: default
   - extras: default
   - hydra: default
-
+  - callbacks: val  
   - experiment: gmm
 
 task_name: "eval"

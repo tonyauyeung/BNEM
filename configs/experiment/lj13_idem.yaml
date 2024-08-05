@@ -46,6 +46,7 @@ model:
     should_clip_log_rewards: False
     max_score_norm: 20
     min_log_reward: null
+  prioritize_warmup: 20000
 
   # num_samples_to_sample_from_buffer: 5120
   diffusion_scale: 0.9

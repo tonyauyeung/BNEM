@@ -80,7 +80,7 @@ class ENDEMLitModule(DEMLitModule):
         t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
-        bootstrap_mc_samples: int = 500,
+        bootstrap_mc_samples: int = 400,
         epsilon_train=1e-4,
         prioritize_warmup=1e3,
         iden_t=False
@@ -374,7 +374,7 @@ class ENDEMLitModule(DEMLitModule):
                 on_epoch=True,
                 prog_bar=False,
         )
-        full_loss = self.t0_regulizer_weight * error_norms_t0 + energy_error_norm
+        full_loss = self.t0_regulizer_weight * error_norms_t0 + energy_error_norm / self.lambda_weighter(times)
         return full_loss
 
         '''
