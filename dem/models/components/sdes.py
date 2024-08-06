@@ -25,11 +25,13 @@ class VEReverseSDE(torch.nn.Module):
     noise_type = "diagonal"
     sde_type = "ito"
 
-    def __init__(self, score, noise_schedule, energy=None):
+    def __init__(self, score, noise_schedule, energy=None,
+                 mh_sample=None):
         super().__init__()
         self.score = score
         self.noise_schedule = noise_schedule
         self.energy = energy
+        self.mh_sample = mh_sample
 
     def f(self, t, x):
         if t.dim() == 0:

@@ -81,6 +81,7 @@ def integrate_sde(
     time_range=1.0,
     negative_time=False,
     num_negative_time_steps=100,
+    metroplolis_hasting=False
 ):
     start_time = time_range if reverse_time else 0.0
     end_time = time_range - start_time
@@ -92,9 +93,12 @@ def integrate_sde(
 
     with conditional_no_grad(no_grad):
         for t in times:
-            x, f = euler_maruyama_step(
-                sde, t, x, time_range / num_integration_steps, diffusion_scale
-            )
+            if not metroplolis_hasting:
+                x, f = euler_maruyama_step(
+                    sde, t, x, time_range / num_integration_steps, diffusion_scale
+                )
+            else:
+                x = sde.mh_sample(t, x, time_range / num_integration_steps, diffusion_scale)
             if energy_function.is_molecule:
                 x = remove_mean(x, energy_function.n_particles, energy_function.n_spatial_dim)
             if energy_function._can_normalize:

@@ -83,10 +83,13 @@ class ENDEMLitModule(DEMLitModule):
         bootstrap_mc_samples: int = 400,
         epsilon_train=1e-4,
         prioritize_warmup=1e3,
-        iden_t=False
+        iden_t=False,
+        mh_iter=100,
     ) -> None:
             
-            net = partial(EnergyNet, net=net)
+            net = partial(EnergyNet, net=net, 
+                          noise_schedule=noise_schedule,
+                          max_iter=mh_iter)
             super().__init__(
                 net=net,
                 optimizer=optimizer,
@@ -145,6 +148,8 @@ class ENDEMLitModule(DEMLitModule):
             self.prioritize_warmup = prioritize_warmup
             assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
             
+            self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, 
+                                            self.energy_function,self.net.MH_sample)
             
             if use_ema:
                 self.net = EMAWrapper(self.net)
@@ -429,6 +434,68 @@ class ENDEMLitModule(DEMLitModule):
         '''
         
         return full_loss
+    
+    def integrate(
+        self,
+        reverse_sde: VEReverseSDE = None,
+        samples: torch.Tensor = None,
+        reverse_time=True,
+        return_full_trajectory=False,
+        diffusion_scale=1.0,
+        no_grad=True,
+        negative_time=False,
+    ) -> torch.Tensor:
+        trajectory = integrate_sde(
+            reverse_sde or self.reverse_sde,
+            samples,
+            self.num_integration_steps,
+            self.energy_function,
+            diffusion_scale=diffusion_scale,
+            reverse_time=reverse_time,
+            no_grad=no_grad,
+            negative_time=negative_time,
+            num_negative_time_steps=self.hparams.num_negative_time_steps,
+            metroplolis_hasting=True
+        )
+        if return_full_trajectory:
+            return trajectory
+        
+        return trajectory[-1]
+    
+    
+    def on_train_epoch_end(self) -> None:
+        "Lightning hook that is called when a training epoch ends."
+        if self.clipper_gen is not None:
+            reverse_sde = VEReverseSDE(
+                self.clipper_gen.wrap_grad_fxn(self.ema_model), 
+                self.noise_schedule, self.energy_function,
+                self.clipper_gen.wrap_grad_fxn(self.ema_model.MH_sample)
+            )
+            self.last_samples = self.generate_samples(
+                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
+            )
+            self.last_energies = self.energy_function(self.last_samples)
+        else:
+            reverse_sde = VEReverseSDE(
+                self.ema_model, self.noise_schedule, self.energy_function,
+                self.ema_model.MH_sample
+            )
+            self.last_samples = self.generate_samples(
+                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
+            )
+            self.last_energies = self.energy_function(self.last_samples)
+        self.buffer.add(self.last_samples, self.last_energies)
+        prefix = "val"
+
+        
+        self._log_energy_w2(prefix=prefix)
+        self._log_data_w2(prefix=prefix)
+        
+        if self.energy_function.is_molecule:
+            self._log_dist_w2(prefix=prefix)
+            self._log_dist_total_var(prefix=prefix)
+        else:
+            self._log_data_total_var(prefix=prefix)
 
         '''
         dt = 1e-2 #TODO move to config
