@@ -84,7 +84,7 @@ class ENDEMLitModule(DEMLitModule):
         epsilon_train=1e-4,
         prioritize_warmup=1e3,
         iden_t=False,
-        mh_iter=100,
+        mh_iter=10,
     ) -> None:
             
             net = partial(EnergyNet, net=net, 
@@ -149,7 +149,7 @@ class ENDEMLitModule(DEMLitModule):
             assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
             
             self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, 
-                                            self.energy_function,self.net.MH_sample)
+                                            self.energy_function)
             
             if use_ema:
                 self.net = EMAWrapper(self.net)
@@ -259,6 +259,9 @@ class ENDEMLitModule(DEMLitModule):
                  clean_samples: torch.Tensor,
                  train=False) -> torch.Tensor:
         
+        if self.iter_num > 1000:
+            self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, 
+                                            self.energy_function,self.net.MH_sample)
         
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
@@ -455,7 +458,7 @@ class ENDEMLitModule(DEMLitModule):
             no_grad=no_grad,
             negative_time=negative_time,
             num_negative_time_steps=self.hparams.num_negative_time_steps,
-            metroplolis_hasting=True
+            metroplolis_hasting=(self.reverse_sde.mh_sample is not None)
         )
         if return_full_trajectory:
             return trajectory
@@ -465,25 +468,36 @@ class ENDEMLitModule(DEMLitModule):
     
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
-        if self.clipper_gen is not None:
-            reverse_sde = VEReverseSDE(
-                self.clipper_gen.wrap_grad_fxn(self.ema_model), 
-                self.noise_schedule, self.energy_function,
-                self.clipper_gen.wrap_grad_fxn(self.ema_model.MH_sample)
-            )
-            self.last_samples = self.generate_samples(
-                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
-            )
-            self.last_energies = self.energy_function(self.last_samples)
+        if self.reverse_sde.mh_sample is not None:
+            if self.clipper_gen is not None:
+                reverse_sde = VEReverseSDE(
+                    self.clipper_gen.wrap_grad_fxn(self.ema_model), 
+                    self.noise_schedule, self.energy_function,
+                    self.clipper_gen.wrap_grad_fxn(self.ema_model.MH_sample)
+                )
+                
+            else:
+                reverse_sde = VEReverseSDE(
+                    self.ema_model, self.noise_schedule, self.energy_function,
+                    self.ema_model.MH_sample
+                )
         else:
-            reverse_sde = VEReverseSDE(
-                self.ema_model, self.noise_schedule, self.energy_function,
-                self.ema_model.MH_sample
-            )
-            self.last_samples = self.generate_samples(
-                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
-            )
-            self.last_energies = self.energy_function(self.last_samples)
+            if self.clipper_gen is not None:
+                reverse_sde = VEReverseSDE(
+                    self.clipper_gen.wrap_grad_fxn(self.ema_model), 
+                    self.noise_schedule, self.energy_function,
+                )
+                
+            else:
+                reverse_sde = VEReverseSDE(
+                    self.ema_model, self.noise_schedule, self.energy_function,
+                )
+                
+        self.last_samples = self.generate_samples(
+            reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
+        )
+        self.last_energies = self.energy_function(self.last_samples)
+                
         self.buffer.add(self.last_samples, self.last_energies)
         prefix = "val"
 
