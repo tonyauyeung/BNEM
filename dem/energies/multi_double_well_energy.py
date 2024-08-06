@@ -99,7 +99,7 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
             data = self.load_data(self.data_path)
 
         else:
-            data = self.load_data(sellf.data_path, size=self.test_set_size)
+            data = self.load_data(self.data_path, size=self.test_set_size)
 
         data = remove_mean(torch.tensor(data), self.n_particles, self.n_spatial_dim).to(
             self.device
@@ -109,7 +109,6 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
     def setup_train_set(self):
         if self.data_from_efm:
-            data = np.load(self.data_path_train, allow_pickle=True)
             data = self.load_data(self.data_path_train)
         else:
             data = self.load_data(self.data_path, size=-self.train_set_size)

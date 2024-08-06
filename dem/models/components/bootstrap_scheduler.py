@@ -74,16 +74,29 @@ class GeometricBootstrapSchedule(BootstrapSchedule):
         noise_scheduler: GeometricNoiseSchedule,
         variance: float
     ) -> None:
-        self.sigma_max = noise_scheduler.sigma_max
-        self.sigma_min = noise_scheduler.sigma_min
-        self.d = noise_scheduler.sigma_diff
+        self.h = noise_scheduler.h
+        self.h_sieries = [self.h(t) for t in torch.linspace(0, 1, steps=1000)]
         self.var = variance
         super().__init__()
 
     def time_spliter(self) -> torch.Tensor:
-        k = round((self.sigma_max ** 2 - 2 * self.sigma_min ** 2) / self.var)
+        k = torch.round((self.h_sieries[-1] - self.h_sieries[0]) / self.var)
+        k = int(k.item())
         t = [0.]
-        for i in range(1, k + 1):
-            t.append(min(np.log((i * self.var + self.sigma_min ** 2) / self.sigma_min ** 2 + 1) * 0.5 / np.log(self.d), 1.0))
+        h_idx, sigma_c, sigma_l = 0, self.h_sieries[0], self.h_sieries[0]
+        end_flag = False
+        for i in range(1, k):
+            while (sigma_l - sigma_c) < self.var:
+                sigma_l = self.h_sieries[h_idx]
+                h_idx += 1
+                if h_idx == 999:
+                    end_flag = True
+                    break
+            sigma_c = sigma_l
+            t.append(h_idx/ 1000)
+            if end_flag:
+                break
+        t.append(1.0)
+        print("checky t::", t)
         return torch.tensor(t)
     
