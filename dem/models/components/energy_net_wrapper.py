@@ -23,6 +23,7 @@ class EnergyNet(nn.Module):
         self.c = nn.Parameter(torch.tensor(0.0))
         self.noise_schedule = noise_schedule
         self.max_iter = max_iter
+        self.score_clipper = None
 
     def forward_e(self, t, y):
         score = self.score_net(t, y)
@@ -44,6 +45,10 @@ class EnergyNet(nn.Module):
         torch.set_grad_enabled(True)
         neg_energy = self.forward_e(t, x)
         score_x = torch.autograd.grad(neg_energy.sum(), x, create_graph=True, retain_graph=True)[0]
+        
+        if self.score_clipper is not None:
+            score_x = self.score_clipper.clip_scores(score_x)
+        
         if not with_grad:
             score_x = score_x.detach()
             x = x.detach()
@@ -62,30 +67,36 @@ class EnergyNet(nn.Module):
         g = self.noise_schedule.g(t.unsqueeze(-1)) ** 2
         g_dt = self.noise_schedule.g((t - dt).unsqueeze(-1)) ** 2
         score_pred, neg_energy = self.forward(t, x, with_grad=False, return_E=True)
-        accept_flag = torch.ones(x.shape[0]).bool()
-        x_neg = x.clone()
-        for _ in range(self.max_iter):
-            noise = torch.randn_like(x)
-            x_prop = x + score_pred * g * dt + \
-                g.sqrt() * noise * math.sqrt(dt) * diffusion_scale
-            energy_prop = self.forward_e(t - dt, x_prop)
+        
+        if score_pred.std() < neg_energy.std():
+        
+            accept_flag = torch.ones(x.shape[0]).bool()
+            x_neg = x.clone()
+            for _ in range(self.max_iter):
+                noise = torch.randn_like(x)
+                x_prop = x + score_pred * g * dt + \
+                    g.sqrt() * noise * math.sqrt(dt) * diffusion_scale
+                energy_prop = self.forward_e(t - dt, x_prop)
+                
+                q_state = torch.exp(- torch.linalg.vector_norm(x_prop - x, dim=-1)/ \
+                    (g * dt).squeeze(-1))
+                q_prop = torch.exp(- torch.linalg.vector_norm(noise, dim=-1) / \
+                        (g_dt * dt).squeeze(-1))
+                accept_prob = torch.exp(neg_energy - energy_prop) * q_state / q_prop
+                accept_prob = torch.clamp(accept_prob, 0, 1)
+                accept_mask = torch.rand_like(accept_prob) > accept_prob
+                x_neg = multi_index_torch(x_neg, accept_flag, accept_mask, x_prop[accept_mask])
+                
+                x, score_pred, neg_energy = x[~accept_mask], score_pred[~accept_mask], neg_energy[~accept_mask]
+                g, g_dt, t = g[~accept_mask], g[~accept_mask], t[~accept_mask]
+                accept_flag = multi_index_torch(accept_flag, accept_flag, accept_mask, False)
+                
+                if x.shape[0] == 0:
+                    break
             
-            q_state = torch.exp(- torch.linalg.vector_norm(x_prop - x, dim=-1)/ \
-                (g * dt).squeeze(-1))
-            q_prop = torch.exp(- torch.linalg.vector_norm(noise, dim=-1) / \
-                    (g_dt * dt).squeeze(-1))
-            accept_prob = torch.exp(neg_energy - energy_prop) * q_state / q_prop
-            accept_prob = torch.clamp(accept_prob, 0, 1)
-            accept_mask = torch.rand_like(accept_prob) > accept_prob
-            x_neg[accept_flag][accept_mask]  = x_prop[accept_mask]
-            x_neg = multi_index_torch(x_neg, accept_flag, accept_mask, x_prop[accept_mask])
-            
-            x, score_pred, neg_energy = x[~accept_mask], score_pred[~accept_mask], neg_energy[~accept_mask]
-            g, g_dt, t = g[~accept_mask], g[~accept_mask], t[~accept_mask]
-            accept_flag = multi_index_torch(accept_flag, accept_flag, accept_mask, False)
-            
-            if x.shape[0] == 0:
-                break
+        else:
+            x_neg = x + score_pred * g * dt + \
+                g.sqrt() * torch.randn_like(x) * math.sqrt(dt) * diffusion_scale
         return x_neg
     
 

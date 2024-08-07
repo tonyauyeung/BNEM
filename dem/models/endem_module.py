@@ -84,7 +84,7 @@ class ENDEMLitModule(DEMLitModule):
         epsilon_train=1e-4,
         prioritize_warmup=1e3,
         iden_t=False,
-        mh_iter=10,
+        mh_iter=5,
     ) -> None:
             
             net = partial(EnergyNet, net=net, 
@@ -138,7 +138,8 @@ class ENDEMLitModule(DEMLitModule):
                 ais_steps=ais_steps,
                 ais_dt=ais_dt,
                 ais_warmup=ais_warmup,
-                iden_t=False
+                iden_t=False,
+                sample_noise=True
             )
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
@@ -153,7 +154,7 @@ class ENDEMLitModule(DEMLitModule):
             
             if use_ema:
                 self.net = EMAWrapper(self.net)
-            
+            self.net.score_clipper = clipper_gen
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -470,10 +471,11 @@ class ENDEMLitModule(DEMLitModule):
         "Lightning hook that is called when a training epoch ends."
         if self.reverse_sde.mh_sample is not None:
             if self.clipper_gen is not None:
+                self.ema_model.score_clipper = self.clipper_gen
                 reverse_sde = VEReverseSDE(
                     self.clipper_gen.wrap_grad_fxn(self.ema_model), 
                     self.noise_schedule, self.energy_function,
-                    self.clipper_gen.wrap_grad_fxn(self.ema_model.MH_sample)
+                    self.ema_model.MH_sample
                 )
                 
             else:
