@@ -7,7 +7,7 @@
 # this allows you to overwrite only specified parameters
 defaults:
   - override /energy: gmm
-  - override /model/noise_schedule: quadratic
+  - override /model/noise_schedule: geometric
 
 tags: ["GMM", "iDEM"]
 
@@ -20,10 +20,10 @@ logger:
 
 model:
   noise_schedule:
-    _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
-    #sigma_min: 0.00001
-    #sigma_max: 1.0
-    beta: 1.0
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
+    sigma_min: 0.00001
+    sigma_max: 1.0
+    #beta: 1.0
 
   buffer:
     prioritize: True

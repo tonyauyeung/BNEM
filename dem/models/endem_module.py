@@ -259,7 +259,7 @@ class ENDEMLitModule(DEMLitModule):
                  clean_samples: torch.Tensor,
                  train=False) -> torch.Tensor:
         
-        if self.iter_num > 1000:
+        if self.iter_num > 0:
             self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, 
                                             self.energy_function,self.net.MH_sample)
         
