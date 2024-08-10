@@ -1,8 +1,10 @@
+import os
 from typing import Any, Dict
 
 import PIL
 from lightning_utilities.core.rank_zero import rank_zero_only
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
+import hydra
 
 from dem.utils import pylogger
 
@@ -53,6 +55,7 @@ def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
     hparams["tags"] = cfg.get("tags")
     hparams["ckpt_path"] = cfg.get("ckpt_path")
     hparams["seed"] = cfg.get("seed")
+    hparams["path"] = {'output_path': str(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)}
 
     # send hparams to all loggers
     for logger in trainer.loggers:
