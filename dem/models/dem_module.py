@@ -1,5 +1,6 @@
 import time
 import copy
+import math
 from typing import Any, Dict, Optional
 
 import hydra
@@ -436,16 +437,19 @@ class DEMLitModule(LightningModule):
                 t = torch.rand([])
                 times = torch.zeros_like(times) + t
             
-            if self.sample_noise:
-                noised_samples = iter_samples + (
-                torch.randn_like(iter_samples) * times.unsqueeze(-1)\
-                    * self.noise_schedule.h(torch.zeros_like(times) + 1).sqrt().unsqueeze(-1)
-            )
-
             
-            noised_samples = iter_samples + (
-                torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
-            )
+            if self.sample_noise:
+                noised_h = (math.log(self.noise_schedule.sigma_diff) * times) + math.log(self.noise_schedule.sigma_min)
+                noised_h = torch.exp(noised_h)
+                noised_samples = iter_samples + (
+                    torch.randn_like(iter_samples) * noised_h.sqrt().unsqueeze(-1)
+                    )
+                times = self.noise_schedule.h_to_t(noised_h)
+
+            else:
+                noised_samples = iter_samples + (
+                    torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
+                )
 
             if self.energy_function.is_molecule:
                 noised_samples = remove_mean(

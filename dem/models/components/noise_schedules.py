@@ -1,10 +1,12 @@
 from abc import ABC, abstractmethod
+import math
 
 import numpy as np
 import torch
 
 
 class BaseNoiseSchedule(ABC):
+        
     @abstractmethod
     def g(t):
         # Returns g(t)
@@ -78,3 +80,6 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
         # Then h(t) = \int_0^t g(z)^2 dz = sigma_min * sqrt{sigma_d^{2t} - 1}
         # see Eq 199 in https://arxiv.org/pdf/2206.00364.pdf
         return (self.sigma_min * (((self.sigma_diff ** (2 * t)) - 1) ** 0.5)) ** 2
+
+    def h_to_t(self, h):
+        return 0.5 * torch.log((h**0.5 / self.sigma_min) ** 2 + 1) / math.log(self.sigma_diff)

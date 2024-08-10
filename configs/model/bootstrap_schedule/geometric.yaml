@@ -3,7 +3,7 @@ _target_: dem.models.components.bootstrap_scheduler.GeometricBootstrapSchedule
 noise_scheduler:
   _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
   sigma_min: 0.00001
-  sigma_max: 3.0
+  sigma_max: 1.0
   #beta: 1.0
 
 variance: 0.1

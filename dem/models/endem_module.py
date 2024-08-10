@@ -267,7 +267,7 @@ class ENDEMLitModule(DEMLitModule):
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
         
-        should_bootstrap = (self.bootstrap_scheduler is not None and train and self.train_stage == 0)
+        should_bootstrap = (self.bootstrap_scheduler is not None and train and self.train_stage == 1)
         if should_bootstrap:
             self.iden_t = True
             with torch.no_grad():
