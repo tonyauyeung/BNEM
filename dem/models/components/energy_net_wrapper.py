@@ -94,9 +94,9 @@ class EnergyNet(nn.Module):
                 if x.shape[0] == 0:
                     break
                 
-                noise = torch.randn_like(x)
-                x_neg[accept_flag] = x + score_pred * g * dt  + \
-                    g.sqrt() * noise * math.sqrt(dt) * diffusion_scale * 0.5
+            noise = torch.randn_like(x)
+            x_neg[accept_flag] = x + score_pred * g * dt + \
+                g.sqrt() * noise * math.sqrt(dt) * diffusion_scale
             
         else:
             x_neg = x + score_pred * g * dt + \

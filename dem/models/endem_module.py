@@ -82,9 +82,9 @@ class ENDEMLitModule(DEMLitModule):
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 400,
         epsilon_train=1e-4,
-        prioritize_warmup=1e3,
+        prioritize_warmup=0,
         iden_t=False,
-        mh_iter=5,
+        mh_iter=0,
     ) -> None:
             
             net = partial(EnergyNet, net=net, 
@@ -139,7 +139,6 @@ class ENDEMLitModule(DEMLitModule):
                 ais_dt=ais_dt,
                 ais_warmup=ais_warmup,
                 iden_t=False,
-                sample_noise=True
             )
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
@@ -332,7 +331,7 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
         
-        energy_error_norm = (predicted_energy - energy_est).pow(2) 
+        energy_error_norm = (predicted_energy - energy_est).pow(2)
         error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
 
         
@@ -382,60 +381,10 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
         )
         
-        full_loss = self.t0_regulizer_weight * error_norms_t0 + energy_error_norm
+        full_loss = (self.t0_regulizer_weight * error_norms_t0 + energy_error_norm)
+        
         if should_bootstrap:
             full_loss += u_loss
-        '''
-        if (energy_clean < -1000).any():
-            
-            predicted_score = self.forward(times, 
-                                            samples, 
-                                            with_grad=True)
-            
-            with torch.no_grad():
-                dt = 1e-2 #TODO move to config
-                noised_samples_num = 10
-                
-                repeat_sample = samples.unsqueeze(1).repeat(1, noised_samples_num, 1)
-                noised_samples_dt = repeat_sample + (
-                        torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None].pow(2) * dt
-                    )
-                noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
-                
-                predicted_score_noised = self.forward(times.repeat(noised_samples_num), 
-                                                    noised_samples_dt, 
-                                                    with_grad=True)
-                predicted_score_noised = predicted_score_noised.view(predicted_score.shape[0],
-                                                                    -1, predicted_score.shape[-1])
-            
-            estimated_score = estimate_grad_Rt(
-                    times,
-                    samples,
-                    self.energy_function,
-                    self.noise_schedule,
-                    num_mc_samples=self.num_estimator_mc_samples,
-                ).detach()
-            
-            if self.energy_function.is_molecule:
-                estimated_score = estimated_score.reshape(-1, 
-                                                        self.energy_function.dimensionality)
-
-            #error_norms_score = self.norm_loss(predicted_score, 
-            #                                predicted_score_noised, 
-            #                                estimated_score)
-            error_norms_score = torch.clamp((predicted_score - estimated_score).pow(2), max=1000.)
-            error_norms_score = error_norms_score.sum(-1)
-            self.log(
-                "score_loss",
-                error_norms_score.mean(),
-                on_step=True,
-                on_epoch=True,
-                prog_bar=False,
-            )
-            
-            c_loss = self.contrastive_loss(predicted_energy, energy_est)
-            full_loss[energy_clean < -1000] = (c_loss * self.lambda_weighter(times))[energy_clean < -1000]
-        '''
         
         return full_loss
     
@@ -512,6 +461,9 @@ class ENDEMLitModule(DEMLitModule):
             self._log_dist_total_var(prefix=prefix)
         else:
             self._log_data_total_var(prefix=prefix)
+
+
+
 
         '''
         dt = 1e-2 #TODO move to config
@@ -624,5 +576,74 @@ class ENDEMLitModule(DEMLitModule):
              error_norms_t0 * self.t0_regulizer_weight
     '''
         
+    '''
+        if (energy_clean < -1000).any():
+            
+            predicted_score = self.forward(times, 
+                                            samples, 
+                                            with_grad=True)
+            
+            with torch.no_grad():
+                dt = 1e-2 #TODO move to config
+                noised_samples_num = 10
+                
+                repeat_sample = samples.unsqueeze(1).repeat(1, noised_samples_num, 1)
+                noised_samples_dt = repeat_sample + (
+                        torch.randn_like(repeat_sample) * self.noise_schedule.g(times)[:, None, None].pow(2) * dt
+                    )
+                noised_samples_dt = noised_samples_dt.view(-1, samples.shape[-1])
+                
+                predicted_score_noised = self.forward(times.repeat(noised_samples_num), 
+                                                    noised_samples_dt, 
+                                                    with_grad=True)
+                predicted_score_noised = predicted_score_noised.view(predicted_score.shape[0],
+                                                                    -1, predicted_score.shape[-1])
+            
+            estimated_score = estimate_grad_Rt(
+                    times,
+                    samples,
+                    self.energy_function,
+                    self.noise_schedule,
+                    num_mc_samples=self.num_estimator_mc_samples,
+                ).detach()
+            
+            if self.energy_function.is_molecule:
+                estimated_score = estimated_score.reshape(-1, 
+                                                        self.energy_function.dimensionality)
+
+            #error_norms_score = self.norm_loss(predicted_score, 
+            #                                predicted_score_noised, 
+            #                                estimated_score)
+            error_norms_score = torch.clamp((predicted_score - estimated_score).pow(2), max=1000.)
+            error_norms_score = error_norms_score.sum(-1)
+            self.log(
+                "score_loss",
+                error_norms_score.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+            )
+            
+            c_loss = self.contrastive_loss(predicted_energy, energy_est)
+            full_loss[energy_clean < -1000] = (c_loss * self.lambda_weighter(times))[energy_clean < -1000]
+    '''
 
         
+
+    '''
+        predicted_score = self.forward(times, 
+                                            samples, 
+                                            with_grad=True)
+        dsm_score = (samples - clean_samples) / self.noise_schedule.h(times).sqrt().unsqueeze(-1)
+        dsm_loss = (predicted_score - dsm_score).pow(2).sum(-1) * nn.Softmax()(energy_clean)
+        
+        self.log(
+            "dsm loss",
+            dsm_loss.mean(),
+                on_step=True,
+                on_epoch=True,
+                prog_bar=False,
+        )
+        weight = self.noise_schedule.h(times) / (self.noise_schedule.h(times) + clean_samples.std())
+        full_loss = full_loss * (1 - weight) + dsm_loss * weight
+    '''
