@@ -35,6 +35,5 @@ normflows
 git+https://github.com/VincentStimper/resampled-base-flows.git # larsflow
 git+https://github.com/noegroup/bgflow.git
 git+https://github.com/jarridrb/fab-torch.git
-git+https://github.com/patrick-kidger/torchcubicspline.git
 scikit-learn
 scipy

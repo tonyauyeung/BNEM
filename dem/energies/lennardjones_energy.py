@@ -9,7 +9,7 @@ from bgflow.utils import distance_vectors, distances_from_vectors
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
 
-from torchcubicspline import(natural_cubic_spline_coeffs, 
+from torchcubicspline.torchcubicspline import(natural_cubic_spline_coeffs, 
                              NaturalCubicSpline)
 
 
@@ -110,7 +110,7 @@ class LennardJonesPotential(Energy):
         
         if self.smooth or smooth_:
             for i, ranges in enumerate(self.ranges):
-                lj_energies[torch.logical_and(dists > ranges[0],  dists < ranges[1])] = self.splines[i].evaluate((dists[torch.logical_and(dists > ranges[0],  dists < ranges[1])]))
+                lj_energies[torch.logical_and(dists > ranges[0],  dists < ranges[1])] = self.splines[i].evaluate((dists[torch.logical_and(dists > ranges[0],  dists < ranges[1])])).squeeze(-1)
         lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
 
         if self.oscillator:
