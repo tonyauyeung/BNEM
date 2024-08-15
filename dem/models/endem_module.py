@@ -332,7 +332,7 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
         
-        energy_error_norm = torch.abs(np.exp(-predicted_energy) - np.exp(-energy_est))
+        energy_error_norm = torch.abs(torch.exp(-predicted_energy) - torch.exp(-energy_est))
         error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
 
         
