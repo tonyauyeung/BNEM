@@ -9,7 +9,7 @@ from bgflow.utils import distance_vectors, distances_from_vectors
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
 
-from torchcubicspline.torchcubicspline import(natural_cubic_spline_coeffs, 
+from torchspline import (natural_cubic_spline_coeffs, 
                              NaturalCubicSpline)
 
 
