@@ -9,6 +9,10 @@ from bgflow.utils import distance_vectors, distances_from_vectors
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
 
+from torchcubicspline import(natural_cubic_spline_coeffs, 
+                             NaturalCubicSpline)
+
+
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.data_utils import remove_mean
@@ -36,6 +40,11 @@ class LennardJonesPotential(Energy):
         oscillator_scale=1.0,
         two_event_dims=True,
         energy_factor=1.0,
+        smooth=False,
+        range_min=[1e-3,],
+        range_max=[1,],
+        interpolation=1000,
+        threshold=1e8,
     ):
         """Energy for a Lennard-Jones cluster.
 
@@ -72,8 +81,25 @@ class LennardJonesPotential(Energy):
         # this is to match the eacf energy with the eq-fm energy
         # for lj13, to match the eacf set energy_factor=0.5
         self._energy_factor = energy_factor
+        
+        self.smooth = smooth
+        if smooth:
+            self.ranges = list(zip(range_min, range_max))
+        
+            #fit spline cubic on these ranges
+            interpolate_points = [torch.linspace(s_, e_, interpolation) for s_, e_ in self.ranges]
+            
+            es = [lennard_jones_energy_torch(x, 
+                                             self._eps, self._rm,
+                                             smooth_=False
+                                             ) for x in interpolate_points]
+            for e, x in zip(interpolate_points, es):
+                x = x[e < threshold]
+                e = e[e < threshold]
+            coeffs = [natural_cubic_spline_coeffs(x, e) for x, e in zip(interpolate_points, es)]
+            self.splines = [NaturalCubicSpline(coeff) for coeff in coeffs]
 
-    def _energy(self, x):
+    def _energy(self, x, smooth_=False):
         batch_shape = x.shape[: -len(self.event_shape)]
         x = x.view(*batch_shape, self._n_particles, self.n_spatial_dim)
 
@@ -82,7 +108,10 @@ class LennardJonesPotential(Energy):
         )
 
         lj_energies = lennard_jones_energy_torch(dists, self._eps, self._rm)
-        # lj_energies = torch.clip(lj_energies, -1e4, 1e4)
+        
+        if self.smooth and smooth_:
+            for i, ranges in enumerate(self.ranges):
+                lj_energies[dists > ranges[0] & dists < ranges[1]] = self.splines[i](dists[dists > ranges[0] & dists < ranges[1]])
         lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
 
         if self.oscillator:
@@ -117,6 +146,7 @@ class LennardJonesEnergy(BaseEnergyFunction):
         data_normalization_factor=1.0,
         energy_factor=1.0,
         is_molecule=True,
+        smooth=False,
     ):
         self.n_particles = n_particles
         self.n_spatial_dim = dimensionality // n_particles
@@ -157,12 +187,15 @@ class LennardJonesEnergy(BaseEnergyFunction):
         )
 
         super().__init__(dimensionality=dimensionality, is_molecule=is_molecule)
+        
+        self.smooth = smooth
 
-    def __call__(self, samples: torch.Tensor) -> torch.Tensor:
+    def __call__(self, samples: torch.Tensor, smooth=False) -> torch.Tensor:
         if len(samples.shape) >= 2:
             samples_shape = list(samples.shape[:-1])
             samples = samples.view(-1, samples.shape[-1])
             energy = self.lennard_jones._log_prob(samples).squeeze(-1)
+            
             return energy.view(*samples_shape)
         else:
             return self.lennard_jones._log_prob(samples).squeeze(-1).squeeze(-1)

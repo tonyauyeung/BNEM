@@ -53,7 +53,7 @@ model:
     max_score_norm: 20
     min_log_reward: null
 
-  prioritize_warmup: 10000
+  #prioritize_warmup: 10000
   diffusion_scale: 1
   num_samples_to_generate_per_epoch: 1000
 

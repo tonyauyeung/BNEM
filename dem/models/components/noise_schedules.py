@@ -38,6 +38,9 @@ class QuadraticNoiseSchedule(BaseNoiseSchedule):
 
     def h(self, t):
         return self.beta * t**2
+    
+    def h_to_t(self, h):
+        return (h / self.beta + 1e-5).sqrt()
 
 
 class PowerNoiseSchedule(BaseNoiseSchedule):

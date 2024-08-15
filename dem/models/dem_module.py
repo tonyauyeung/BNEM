@@ -153,7 +153,8 @@ class DEMLitModule(LightningModule):
         ais_warmup: int = 0,
         ema_beta=0.95,
         ema_steps=0,
-        iden_t=False
+        iden_t=False,
+        sample_noise=False
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -324,6 +325,7 @@ class DEMLitModule(LightningModule):
         self.diffusion_scale = diffusion_scale
         self.init_from_prior = init_from_prior
         self.iden_t = iden_t
+        self.sample_noise = sample_noise
         
         self.iter_num = 0
 
@@ -435,11 +437,17 @@ class DEMLitModule(LightningModule):
                 t = torch.rand([])
                 times = torch.zeros_like(times) + t
             
+            if self.sample_noise:
+                noise_h = times ** 2 * self.noise_schedule.h(1)
+                noised_samples = iter_samples + (
+                    torch.randn_like(iter_samples) * noise_h.sqrt().unsqueeze(-1)
+                )
+                times = self.noise_schedule.h_to_t(noise_h)
             
-            
-            noised_samples = iter_samples + (
-                torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
-            )
+            else:
+                noised_samples = iter_samples + (
+                    torch.randn_like(iter_samples) * self.noise_schedule.h(times).sqrt().unsqueeze(-1)
+                )
 
             if self.energy_function.is_molecule:
                 noised_samples = remove_mean(

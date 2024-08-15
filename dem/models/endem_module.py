@@ -139,6 +139,7 @@ class ENDEMLitModule(DEMLitModule):
                 ais_dt=ais_dt,
                 ais_warmup=ais_warmup,
                 iden_t=False,
+                sample_noise=False
             )
             self.t0_regulizer_weight = t0_regulizer_weight
             self.bootstrap_scheduler = bootstrap_schedule
@@ -283,7 +284,7 @@ class ENDEMLitModule(DEMLitModule):
                                                      self.num_estimator_mc_samples, 
                                                      reduction=True)
                 u_predicted_energy = self.net.forward_e(u, u_samples)
-                u_loss = (u_energy_est - u_predicted_energy).pow(2) * self.lambda_weighter(u)
+                u_loss = (u_energy_est - u_predicted_energy).pow(2) / self.lambda_weighter(u)
             
             bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
                                          > u_loss)[0]
@@ -331,7 +332,7 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
         
-        energy_error_norm = (predicted_energy - energy_est).pow(2)
+        energy_error_norm = torch.abs(np.exp(-predicted_energy) - np.exp(-energy_est))
         error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
 
         

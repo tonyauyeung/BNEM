@@ -26,7 +26,7 @@ model:
     beta: 1.0
 
   buffer:
-    prioritize: True
+    prioritize: False
 
   partial_prior:
     _target_: dem.energies.base_prior.Prior
