@@ -68,7 +68,7 @@ class EnergyNet(nn.Module):
         g_dt = self.noise_schedule.g((t - dt).unsqueeze(-1)) ** 2
         score_pred, neg_energy = self.forward(t, x, with_grad=False, return_E=True)
         
-        if score_pred.std() < neg_energy.std():
+        if True:
         
             accept_flag = torch.ones(x.shape[0]).bool()
             x_neg = x.clone()

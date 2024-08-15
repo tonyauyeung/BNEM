@@ -40,7 +40,7 @@ class LennardJonesPotential(Energy):
         oscillator_scale=1.0,
         two_event_dims=True,
         energy_factor=1.0,
-        smooth=False,
+        smooth=True,
         range_min=[1e-3,],
         range_max=[1,],
         interpolation=1000,
@@ -90,13 +90,12 @@ class LennardJonesPotential(Energy):
             interpolate_points = [torch.linspace(s_, e_, interpolation) for s_, e_ in self.ranges]
             
             es = [lennard_jones_energy_torch(x, 
-                                             self._eps, self._rm,
-                                             smooth_=False
+                                             self._eps, self._rm
                                              ) for x in interpolate_points]
             for e, x in zip(interpolate_points, es):
                 x = x[e < threshold]
                 e = e[e < threshold]
-            coeffs = [natural_cubic_spline_coeffs(x, e) for x, e in zip(interpolate_points, es)]
+            coeffs = [natural_cubic_spline_coeffs(x, e.unsqueeze(-1)) for x, e in zip(interpolate_points, es)]
             self.splines = [NaturalCubicSpline(coeff) for coeff in coeffs]
 
     def _energy(self, x, smooth_=False):
@@ -109,9 +108,9 @@ class LennardJonesPotential(Energy):
 
         lj_energies = lennard_jones_energy_torch(dists, self._eps, self._rm)
         
-        if self.smooth and smooth_:
+        if self.smooth or smooth_:
             for i, ranges in enumerate(self.ranges):
-                lj_energies[dists > ranges[0] & dists < ranges[1]] = self.splines[i](dists[dists > ranges[0] & dists < ranges[1]])
+                lj_energies[torch.logical_and(dists > ranges[0],  dists < ranges[1])] = self.splines[i].evaluate((dists[torch.logical_and(dists > ranges[0],  dists < ranges[1])]))
         lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
 
         if self.oscillator:
@@ -128,8 +127,8 @@ class LennardJonesPotential(Energy):
         x = torch.Tensor(x)
         return self._energy(x).cpu().numpy()
 
-    def _log_prob(self, x):
-        return -self._energy(x)
+    def _log_prob(self, x, smooth=False):
+        return -self._energy(x, smooth_=smooth)
 
 
 class LennardJonesEnergy(BaseEnergyFunction):
@@ -194,7 +193,7 @@ class LennardJonesEnergy(BaseEnergyFunction):
         if len(samples.shape) >= 2:
             samples_shape = list(samples.shape[:-1])
             samples = samples.view(-1, samples.shape[-1])
-            energy = self.lennard_jones._log_prob(samples).squeeze(-1)
+            energy = self.lennard_jones._log_prob(samples, smooth=smooth).squeeze(-1)
             
             return energy.view(*samples_shape)
         else:

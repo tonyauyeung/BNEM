@@ -32,7 +32,7 @@ model:
 
   noise_schedule:
     _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
-    #sigma_min: 0.00001
+    #sigma_min: 0.001
     #sigma_max: 3
     beta: 3
 
