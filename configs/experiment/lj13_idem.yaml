@@ -29,7 +29,7 @@ model:
     _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
     #sigma_min: 0.01
     #sigma_max: 2
-    beta: 1.414
+    beta: 2.
 
   partial_prior:
     _target_: dem.energies.base_prior.MeanFreePrior

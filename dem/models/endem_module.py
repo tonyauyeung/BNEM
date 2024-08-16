@@ -327,7 +327,7 @@ class ENDEMLitModule(DEMLitModule):
                                                    self.num_estimator_mc_samples)
             
         
-        energy_clean = self.energy_function(clean_samples)
+        energy_clean = self.energy_function(clean_samples, smooth=True)
 
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)

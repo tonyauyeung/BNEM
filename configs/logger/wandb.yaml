@@ -7,7 +7,7 @@ wandb:
   offline: False
   id: null # pass correct id to resume experiment!
   anonymous: null # enable anonymous logging
-  project: "dw4_unclip"
+  project: "lj13_unclip"
   log_model: False # upload lightning ckpts
   prefix: "" # a string to put at the beginning of metric keys
   entity: ${oc.env:WANDB_ENTITY} # set to name of your wandb team

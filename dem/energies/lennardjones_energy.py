@@ -52,7 +52,7 @@ class LennardJonesPotential(Energy):
         oscillator_scale=1.0,
         two_event_dims=True,
         energy_factor=1.0,
-        range_min=0.5,
+        range_min=0.65,
         range_max=2,
         interpolation=1000,
     ):

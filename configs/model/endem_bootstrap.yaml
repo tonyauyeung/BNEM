@@ -32,7 +32,7 @@ buffer:
   device: ${trainer.accelerator}
   sample_with_replacement: True
   fill_buffer_during_init: False
-  prioritize: True
+  prioritize: False
 
 clipper_gen:
   _target_: dem.models.components.clipper.Clipper
