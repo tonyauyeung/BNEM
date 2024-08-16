@@ -1,16 +1,15 @@
 from typing import Optional
+from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
 import PIL
 import torch
+from scipy.interpolate import CubicSpline
 from bgflow import Energy
 from bgflow.utils import distance_vectors, distances_from_vectors
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
-
-from torchspline import (natural_cubic_spline_coeffs, 
-                             NaturalCubicSpline)
 
 
 from dem.energies.base_energy_function import BaseEnergyFunction
@@ -29,6 +28,19 @@ def lennard_jones_energy_torch(r, eps=1.0, rm=1.0):
     return lj
 
 
+def cubic_spline(x_new, x, c):
+    x, c = x.to(x_new.device), c.to(x_new.device)
+    intervals = torch.bucketize(x_new, x) - 1
+    intervals = torch.clamp(intervals, 0, len(x) - 2) # Ensure valid intervals
+    # Calculate the difference from the left breakpoint of the interval
+    dx = x_new - x[intervals]
+    # Evaluate the cubic spline at x new
+    y_new = (c[0, intervals] * dx ** 3 + \
+             c[1, intervals]* dx**2 + \
+             c[2, intervals]* dx +\
+             c[3, intervals])
+    return y_new
+
 class LennardJonesPotential(Energy):
     def __init__(
         self,
@@ -40,11 +52,9 @@ class LennardJonesPotential(Energy):
         oscillator_scale=1.0,
         two_event_dims=True,
         energy_factor=1.0,
-        smooth=True,
-        range_min=[1e-3,],
-        range_max=[1,],
+        range_min=0.5,
+        range_max=2,
         interpolation=1000,
-        threshold=1e8,
     ):
         """Energy for a Lennard-Jones cluster.
 
@@ -82,21 +92,20 @@ class LennardJonesPotential(Energy):
         # for lj13, to match the eacf set energy_factor=0.5
         self._energy_factor = energy_factor
         
-        self.smooth = smooth
-        if smooth:
-            self.ranges = list(zip(range_min, range_max))
+        self.range_min = range_min
+        self.range_max = range_max
+    
+        #fit spline cubic on these ranges
+        interpolate_points = torch.linspace(range_min, range_max, interpolation)
         
-            #fit spline cubic on these ranges
-            interpolate_points = [torch.linspace(s_, e_, interpolation) for s_, e_ in self.ranges]
-            
-            es = [lennard_jones_energy_torch(x, 
-                                             self._eps, self._rm
-                                             ) for x in interpolate_points]
-            for e, x in zip(interpolate_points, es):
-                x = x[e < threshold]
-                e = e[e < threshold]
-            coeffs = [natural_cubic_spline_coeffs(x, e.unsqueeze(-1)) for x, e in zip(interpolate_points, es)]
-            self.splines = [NaturalCubicSpline(coeff) for coeff in coeffs]
+        es = lennard_jones_energy_torch(interpolate_points, 
+                                            self._eps, self._rm
+                                            )
+        coeffs = CubicSpline(np.array(interpolate_points),
+                                np.array(es)).c
+        self.splines = partial(cubic_spline, 
+                                x=interpolate_points,
+                                c=torch.tensor(coeffs).float())
 
     def _energy(self, x, smooth_=False):
         batch_shape = x.shape[: -len(self.event_shape)]
@@ -108,9 +117,8 @@ class LennardJonesPotential(Energy):
 
         lj_energies = lennard_jones_energy_torch(dists, self._eps, self._rm)
         
-        if self.smooth or smooth_:
-            for i, ranges in enumerate(self.ranges):
-                lj_energies[torch.logical_and(dists > ranges[0],  dists < ranges[1])] = self.splines[i].evaluate((dists[torch.logical_and(dists > ranges[0],  dists < ranges[1])])).squeeze(-1)
+        if smooth_:
+            lj_energies[dists < self.range_min] = self.splines(dists[dists < self.range_min]).squeeze(-1)
         lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
 
         if self.oscillator:
@@ -197,7 +205,7 @@ class LennardJonesEnergy(BaseEnergyFunction):
             
             return energy.view(*samples_shape)
         else:
-            return self.lennard_jones._log_prob(samples).squeeze(-1).squeeze(-1)
+            return self.lennard_jones._log_prob(samples, smooth=smooth).squeeze(-1).squeeze(-1)
     
     
     def setup_test_set(self):

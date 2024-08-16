@@ -47,12 +47,12 @@ model:
     should_clip_log_rewards: False
     max_score_norm: 20
     min_log_reward: null
-  prioritize_warmup: 20000
+  #prioritize_warmup: 20000
 
   # num_samples_to_sample_from_buffer: 5120
   diffusion_scale: 0.9
   num_samples_to_generate_per_epoch: 1000
-  num_samples_to_sample_from_buffer: 128
+  num_samples_to_sample_from_buffer: 256
 
   init_from_prior: true
 
@@ -60,5 +60,5 @@ model:
 
   nll_integration_method: dopri5
   num_estimator_mc_samples: 1000
-  eval_batch_size: 128
+  eval_batch_size: 1000
   #TODO find ways to eval 1000 test without CUDA outof memory
