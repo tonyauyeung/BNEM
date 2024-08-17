@@ -109,6 +109,8 @@ class LennardJonesPotential(Energy):
 
     def _energy(self, x, smooth_=False):
         batch_shape = x.shape[: -len(self.event_shape)]
+        if batch_shape[0] == 0:
+            return torch.zeros([0, 1]).to(x.device)
         x = x.view(*batch_shape, self._n_particles, self.n_spatial_dim)
 
         dists = distances_from_vectors(

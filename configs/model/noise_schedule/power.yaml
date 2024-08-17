@@ -1,0 +1,4 @@
+_target_: dem.models.components.noise_schedules.PowerNoiseSchedule
+beta: 1.0
+power: 6
+
