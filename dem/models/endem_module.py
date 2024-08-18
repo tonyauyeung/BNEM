@@ -85,6 +85,7 @@ class ENDEMLitModule(DEMLitModule):
         prioritize_warmup=0,
         iden_t=False,
         mh_iter=0,
+        num_efficient_samples=0,
     ) -> None:
             
             net = partial(EnergyNet, net=net, 
@@ -149,8 +150,11 @@ class ENDEMLitModule(DEMLitModule):
             self.prioritize_warmup = prioritize_warmup
             assert self.num_estimator_mc_samples > self.bootstrap_mc_samples
             
-            self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, 
-                                            self.energy_function)
+            self.num_efficient_samples = num_efficient_samples
+            self.reverse_sde = VEReverseSDE(self.net, 
+                                                    self.noise_schedule, 
+                                                    self.energy_function, None, num_efficient_samples)
+
             
             if use_ema:
                 self.net = EMAWrapper(self.net)
@@ -425,24 +429,28 @@ class ENDEMLitModule(DEMLitModule):
                 reverse_sde = VEReverseSDE(
                     self.clipper_gen.wrap_grad_fxn(self.ema_model), 
                     self.noise_schedule, self.energy_function,
-                    self.ema_model.MH_sample
+                    self.ema_model.MH_sample,
+                    num_efficient_samples = self.num_efficient_samples
                 )
                 
             else:
                 reverse_sde = VEReverseSDE(
                     self.ema_model, self.noise_schedule, self.energy_function,
-                    self.ema_model.MH_sample
+                    self.ema_model.MH_sample,
+                    num_efficient_samples = self.num_efficient_samples
                 )
         else:
             if self.clipper_gen is not None:
                 reverse_sde = VEReverseSDE(
                     self.clipper_gen.wrap_grad_fxn(self.ema_model), 
                     self.noise_schedule, self.energy_function,
+                    num_efficient_samples = self.num_efficient_samples
                 )
                 
             else:
                 reverse_sde = VEReverseSDE(
                     self.ema_model, self.noise_schedule, self.energy_function,
+                    num_efficient_samples = self.num_efficient_samples
                 )
                 
         self.last_samples = self.generate_samples(

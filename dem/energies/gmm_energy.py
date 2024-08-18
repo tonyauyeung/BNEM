@@ -94,7 +94,7 @@ class GMM(BaseEnergyFunction):
             val_samples = self.gmm.sample((self.val_set_size,))
         return val_samples
 
-    def __call__(self, samples: torch.Tensor, smooth) -> torch.Tensor:
+    def __call__(self, samples: torch.Tensor, smooth=None) -> torch.Tensor:
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
         return self.gmm.log_prob(samples)

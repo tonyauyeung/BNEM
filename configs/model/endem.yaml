@@ -74,7 +74,9 @@ cfm_loss_weight: 1.0
 use_ema: false
 use_exact_likelihood: True
 
+num_efficient_samples: 0  # 0 for using exact gradient computation for scores, >0 for approximation
 
+mh_iter: 0
 
 # initialize the buffer with samples from the prior
 init_from_prior: true

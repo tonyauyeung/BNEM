@@ -57,6 +57,18 @@ class EnergyNet(nn.Module):
             return score_x
         else:
             return score_x, neg_energy
+        
+    def forward_d(self, t: torch.Tensor, x: torch.Tensor, num_samples: int) -> torch.Tensor:
+        """obtain approximate denoiser via Tweedie formula"""
+        sigmas = self.noise_schedule.h(t).unsqueeze(1).sqrt()
+        data_shape = list(x.shape)[1:]
+        noise = torch.randn(x.shape[0], num_samples, *data_shape).to(x.device)
+        x0_t = noise * sigmas.unsqueeze(-1) + x.unsqueeze(1)
+        t0 = torch.ones((x.shape[0] * num_samples, ), device=x.device) * 1e-5
+        energy_t = self.forward_e(t, x).unsqueeze(1)
+        energy0_t = self.forward_e(t0, x0_t.view(-1, *data_shape)).view(-1, num_samples)
+        denoised_x = x0_t * torch.exp(energy_t - energy0_t).view(*energy0_t.shape, *([1] * len(data_shape)))
+        return denoised_x.mean(dim=1)
     
     @torch.no_grad()
     def MH_sample(self, t: torch.Tensor, x: torch.Tensor,

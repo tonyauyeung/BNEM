@@ -18,7 +18,7 @@ from torchcfm.conditional_flow_matching import (
 from torchmetrics import MeanMetric
 
 from dem.energies.base_energy_function import BaseEnergyFunction
-from dem.utils.data_utils import remove_mean
+from dem.utils.data_utils import remove_mean, calculate_rmsd_matrix
 from dem.utils.logging_utils import fig_to_image
 
 from .components.clipper import Clipper
@@ -648,7 +648,15 @@ class DEMLitModule(LightningModule):
             generated_samples, _ = self.buffer.get_last_n_inserted(self.eval_batch_size)
         
         generated_samples = self.energy_function.unnormalize(generated_samples)
-        distance_matrix = pot.dist(data_set.cpu().numpy(), generated_samples.cpu().numpy(), metric='euclidean')
+        if self.energy_function.is_molecule:
+            distance_matrix = calculate_rmsd_matrix(data_set.view(-1, 
+                                                                  self.energy_function.n_particles,
+                                                                  self.energy_function.n_spatial_dim),
+                                                    generated_samples.view(-1, 
+                                                                  self.energy_function.n_particles,
+                                                                  self.energy_function.n_spatial_dim)).cpu().numpy()
+        else:
+            distance_matrix = pot.dist(data_set.cpu().numpy(), generated_samples.cpu().numpy(), metric='euclidean')
         src, dist = np.ones(len(data_set)) / len(data_set), np.ones(len(generated_samples)) / len(generated_samples)
         G = pot.emd(src, dist, distance_matrix)
         w2_dist = np.sum(G * distance_matrix) / G.sum()

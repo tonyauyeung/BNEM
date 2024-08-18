@@ -25,30 +25,28 @@ class VEReverseSDE(torch.nn.Module):
     noise_type = "diagonal"
     sde_type = "ito"
 
-    def __init__(self, score, noise_schedule, energy=None,
-                 mh_sample=None):
+    def __init__(self, score, noise_schedule, 
+                 energy=None,
+                 mh_sample=None,
+                 num_efficient_samples=0):
         super().__init__()
         self.score = score
         self.noise_schedule = noise_schedule
         self.energy = energy
         self.mh_sample = mh_sample
+        self.num_efficient_samples = num_efficient_samples
+        
 
     def f(self, t, x):
         if t.dim() == 0:
             # repeat the same time for all points if we have a scalar time
             t = t * torch.ones(x.shape[0]).to(x.device)
 
-        score = self.score(t, x)
-        '''#moved to config already
-        if self.energy.is_molecule:
-            score = score.view(-1, self.energy.n_particles, self.energy.n_spatial_dim)
-            clip = 20.
-            eff = torch.clamp(clip/torch.linalg.vector_norm(score, dim=-1), max=1.).unsqueeze(-1)
-            score = score * eff
-            score = score.view(-1, self.energy.n_particles * self.energy.n_spatial_dim)
-        '''
-        
-        return self.g(t, x).pow(2) * score
+        if self.num_efficient_samples == 0:
+            score = self.score(t, x)
+            return self.g(t, x).pow(2) * score
+        else:
+            return self.score.forward_d(t, x, self.num_efficient_samples) - x
 
     def g(self, t, x):
         g = self.noise_schedule.g(t)
