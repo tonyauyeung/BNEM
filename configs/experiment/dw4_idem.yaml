@@ -18,7 +18,7 @@ logger:
 defaults:
   - override /energy: dw4
   - override /model/net: egnn
-  - override /model/noise_schedule: quadratic
+  - override /model/noise_schedule: power
 
 optimizer:
   lr: 1e-3
@@ -31,10 +31,11 @@ model:
     n_dimension: 2
 
   noise_schedule:
-    _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
+    _target_: dem.models.components.noise_schedules.PowerNoiseSchedule
     #sigma_min: 0.001
     #sigma_max: 3
     beta: 3
+    power: 6
 
   partial_prior:
     _target_: dem.energies.base_prior.MeanFreePrior
