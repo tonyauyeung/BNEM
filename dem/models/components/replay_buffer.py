@@ -9,6 +9,7 @@ class AISData(NamedTuple):
     x: torch.Tensor
     log_w: torch.Tensor
     add_count: torch.Tensor
+    q: torch.Tensor
 
 
 class ReplayBuffer:
@@ -20,6 +21,7 @@ class ReplayBuffer:
         initial_sampler: Callable[[], Tuple[torch.Tensor, torch.Tensor]],
         device: str = "cpu",
         temperature: float = 1.0,
+        with_q=False,
     ):
         """
         Create replay buffer for batched sampling and adding of data.
@@ -51,6 +53,7 @@ class ReplayBuffer:
             add_count=torch.zeros(
                 self.max_length,
             ).to(device),
+            log_q=torch.zeros(self.max_length).to(device) if with_q else None
         )
         self.possible_indices = torch.arange(self.max_length).to(device)
         self.device = device
@@ -59,23 +62,31 @@ class ReplayBuffer:
         self.is_full = False  # whether the buffer is full
         self.can_sample = False  # whether the buffer is full enough to begin sampling
         self.temperature = temperature
+        self.with_q = with_q
 
         while self.can_sample is False:
             # fill buffer up minimum length
-            x, log_w = initial_sampler()
-            self.add(x, log_w)
+            if with_q:
+                x, log_w, log_q = initial_sampler()
+                self.add(x, log_w, log_q)
+            else:
+                x, log_w = initial_sampler()
+                self.add(x, log_w)
             self.current_add_count = 0  # reset add count back to zero
         self.current_add_count = 1
 
     @torch.no_grad()
-    def add(self, x: torch.Tensor, log_w: torch.Tensor):
+    def add(self, x: torch.Tensor, log_w: torch.Tensor, log_q=None):
         """Add a batch of generated data to the replay buffer."""
         batch_size = x.shape[0]
         x = x.to(self.device)
         log_w = log_w.to(self.device)
+        log_q = log_q.to(self.device)
         indices = (torch.arange(batch_size) + self.current_index).to(self.device) % self.max_length
         self.buffer.x[indices] = x
         self.buffer.log_w[indices] = log_w
+        if self.with_q:
+            self.buffer.log_q[indices] = log_q
         self.buffer.add_count[indices] = self.current_add_count
         new_index = self.current_index + batch_size
         if not self.is_full:
@@ -96,9 +107,11 @@ class ReplayBuffer:
             idxs.append(torch.arange(self.max_length + start_idx, self.max_length))
 
         idx = torch.cat(idxs)
-
-        return self.buffer.x[idx], self.buffer.log_w[idx]
-
+        if self.with_q:
+            return self.buffer.x[idx], self.buffer.log_w[idx], self.buffer.log_q[idx]
+        else:
+            return self.buffer.x[idx], self.buffer.log_w[idx]
+        
     @torch.no_grad()
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Return a batch of sampled data, if the batch size is specified then the batch will have
@@ -111,16 +124,26 @@ class ReplayBuffer:
         indices = torch.multinomial(probs, num_samples=batch_size, replacement=False).to(
             self.device
         )  # sample uniformly
-        return self.buffer.x[indices], self.buffer.log_w[indices]
+        if self.with_q:
+            return self.buffer.x[indices], self.buffer.log_w[indices], self.buffer.log_q[indices], indices
+        else:
+            return self.buffer.x[indices], self.buffer.log_w[indices]
 
     def sample_n_batches(
         self, batch_size: int, n_batches: int
     ) -> Iterable[Tuple[torch.Tensor, torch.Tensor]]:
         """Returns a list of batches."""
-        x, log_w = self.sample(batch_size * n_batches)
+        if self.with_q:
+            x, log_w, log_q = self.sample(batch_size * n_batches)
+        else:
+            x, log_w = self.sample(batch_size * n_batches)
         x_batches = torch.chunk(x, n_batches)
         log_w_batches = torch.chunk(log_w, n_batches)
-        dataset = [(x, log_w) for x, log_w in zip(x_batches, log_w_batches)]
+        if self.with_q:
+            log_q_batches = torch.chunk(log_q, n_batches)
+            dataset = [(x, log_w, log_q) for x, log_w, log_q in zip(x_batches, log_w_batches, log_q_batches)]
+        else:
+            dataset = [(x, log_w) for x, log_w in zip(x_batches, log_w_batches)]
         return dataset
 
 

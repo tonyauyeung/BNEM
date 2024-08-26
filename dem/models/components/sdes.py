@@ -52,8 +52,16 @@ class VEReverseSDE(torch.nn.Module):
         g = self.noise_schedule.g(t)
         return g.unsqueeze(1) if g.ndim > 0 else torch.full_like(x, g)
     
+    def h(self, t, x):
+        h = self.noise_schedule.h(t)
+        return h.unsqueeze(1) if h.ndim > 0 else torch.full_like(x, h)
+    
     def e(self, t, x):
         return self.energy(x)
+    
+    def a(self, t, x, dt):
+        a = self.noise_schedule.a(t)
+        return a.unsqueeze(1) if a.ndim > 0 else torch.full_like(x, a)
 
 
 class RegVEReverseSDE(VEReverseSDE):

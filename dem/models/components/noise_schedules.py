@@ -27,6 +27,12 @@ class LinearNoiseSchedule(BaseNoiseSchedule):
 
     def h(self, t):
         return self.beta * t
+    
+    def h_to_t(self, h):
+        return h / self.beta
+    
+    def a(self, t, dt):
+        return 1 - torch.exp(-2 * self.beta**0.5 * dt)
 
 
 class QuadraticNoiseSchedule(BaseNoiseSchedule):
@@ -41,6 +47,9 @@ class QuadraticNoiseSchedule(BaseNoiseSchedule):
     
     def h_to_t(self, h):
         return (h / self.beta + 1e-5).sqrt()
+    
+    def a(self, t, dt):
+        return 1 - torch.exp(-2 * (2 * self.beta) ** 0.5) * (2 / 3) * (t ** 1.5 - ( t - dt) ** 1.5)
 
 
 class PowerNoiseSchedule(BaseNoiseSchedule):
@@ -53,17 +62,12 @@ class PowerNoiseSchedule(BaseNoiseSchedule):
 
     def h(self, t):
         return self.beta * (t**self.power)
-
-
-class SubLinearNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, beta):
-        self.beta = beta
-
-    def g(self, t):
-        return torch.sqrt(self.beta * 0.5 * 1 / (t**0.5 + 1e-3))
-
-    def h(self, t):
-        return self.beta * t**0.5
+    
+    def h_to_t(self, h):
+        return h / self.beta ** (1 / self.power)
+    
+    def a(self, t, dt):
+        return 1 - torch.exp(-2 * (self.beta / self.power) ** 0.5 * (t ** self.power - (t - dt) ** self.power))
 
 
 class GeometricNoiseSchedule(BaseNoiseSchedule):
@@ -86,3 +90,6 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
 
     def h_to_t(self, h):
         return 0.5 * torch.log((h**0.5 / self.sigma_min) ** 2 + 1) / math.log(self.sigma_diff)
+    
+    def a(self, t, dt):
+        return 1 - torch.exp(-2 * self.sigma_min * ((2 * np.log(self.sigma_diff)) ** 0.5) * ( 1 / math.log(self.sigma_diff)) * (torch.pow(torch.full_like(t, self.sigma_diff, t)) - torch.pow(torch.full_like(t, self.sigma_diff, t - dt))))

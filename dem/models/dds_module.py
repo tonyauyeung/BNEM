@@ -68,7 +68,7 @@ def get_wandb_logger(loggers):
     return wandb_logger
 
 
-class PISLitModule(LightningModule):
+class DDSLitModule(LightningModule):
     """Example of a `LightningModule` for MNIST classification.
 
     A `LightningModule` implements 8 key methods:
@@ -104,6 +104,7 @@ class PISLitModule(LightningModule):
     def __init__(
         self,
         net: torch.nn.Module,
+        tnet: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
         energy_function: BaseEnergyFunction,
@@ -122,6 +123,8 @@ class PISLitModule(LightningModule):
         cfm_prior_std: float,
         compile: bool,
         nll_integration_method: str,
+        use_richardsons: bool,
+        logz_with_cfm: bool,
         use_exact_likelihood=False,
         use_buffer=True,
         prioritize_cfm_training_samples: bool = False,
@@ -133,7 +136,7 @@ class PISLitModule(LightningModule):
         clipper_gen: Optional[Clipper] = None,
         diffusion_scale=1.0,
         cfm_loss_weight=1.0,
-        pis_scale=1.0,
+        dds_scale=1.0,
         time_range=5.0,
         use_ema=False,
         debug_use_train_data=False,
@@ -170,12 +173,13 @@ class PISLitModule(LightningModule):
         self.buffer = buffer
         self.dim = self.energy_function.dimensionality
         self.time_range = time_range
-        self.pis_scale = pis_scale
+        self.dds_scale = dds_scale
         self.diffusion_scale = diffusion_scale
 
         self.clipper = clipper
         self.clipped_grad_fxn = self.clipper.wrap_grad_fxn(estimate_grad_Rt)
 
+        self.tcond = tnet()
         self.net = net(energy_function=energy_function)
 
         self.cfm_net = net(energy_function=energy_function)
@@ -218,11 +222,11 @@ class PISLitModule(LightningModule):
 
         self.outputs = {}
 
-        self.pis_train_loss = MeanMetric()
-        self.pis_prior_ll = MeanMetric()
-        self.pis_sample_ll = MeanMetric()
-        self.pis_reg_loss = MeanMetric()
-        self.pis_term_loss = MeanMetric()
+        self.dds_train_loss = MeanMetric()
+        self.dds_prior_ll = MeanMetric()
+        self.dds_sample_ll = MeanMetric()
+        self.dds_reg_loss = MeanMetric()
+        self.dds_term_loss = MeanMetric()
         self.cfm_train_loss = MeanMetric()
         self.val_loss = MeanMetric()
         self.test_loss = MeanMetric()
@@ -252,116 +256,6 @@ class PISLitModule(LightningModule):
         self.test_train_nfe = MeanMetric()
         self.test_train_logz = MeanMetric()
 
-    def drift(self, t, x):
-        state = x[:, :-1]
-        state = torch.nan_to_num(state)
-        f = torch.clip(self.net(t, state), -1e4, 1e4)
-        dx = torch.nan_to_num(f)
-        norm = 0.5 * (dx**2).sum(dim=1, keepdim=True)
-        return torch.cat([dx * self.pis_scale, norm], dim=-1)
-
-    def diffusion(self, t, x):
-        coeff = torch.ones_like(x) * self.pis_scale
-        coeff[..., -1] = 0
-        return coeff
-
-    def fwd_traj(self):
-        start_time = 0.0
-        end_time = self.time_range
-        dt = self.time_range / self.num_integration_steps
-
-        times = torch.linspace(
-            start_time, end_time, self.num_integration_steps + 1, device=self.device
-        )[:-1]
-
-        state = torch.zeros(self.eval_batch_size, self.dim + 1, device=self.device)
-
-        logpf = torch.zeros(self.eval_batch_size, device=self.device)
-        logpb = torch.zeros(self.eval_batch_size, device=self.device)
-
-        for t in times:
-            noise = torch.randn_like(state, device=self.device)
-            dx = self.pis_sde.f(t, state)
-            std = self.pis_sde.g(t, state)
-
-            state_ = state + dt * dx + std * noise * np.sqrt(dt)
-            logpf += -0.5 * (
-                noise[..., :-1] ** 2 + logtwopi + np.log(dt) + torch.log(std[..., :-1] ** 2)
-            ).sum(1)
-
-            if t > 0:
-                back_mean = state_[..., :-1] - dt * state_[..., :-1] / (t + dt)
-                back_var = (self.pis_scale**2) * dt * t / (t + dt)
-                noise_backward = (state[..., :-1] - back_mean) / torch.sqrt(back_var)
-                logpb += -0.5 * (noise_backward**2 + logtwopi + torch.log(back_var)).sum(1)
-
-            state = state_
-
-        return state[..., :-1], logpf, logpb
-
-    def bwd_traj(self, data):
-        start_time = 0.0
-        end_time = self.time_range
-        dt = self.time_range / self.num_integration_steps
-
-        times = torch.linspace(
-            end_time, start_time, self.num_integration_steps + 1, device=self.device
-        )[:-1]
-
-        log_pf = torch.zeros(data.shape[0], device=self.device)
-        log_pb = torch.zeros(data.shape[0], device=self.device)
-        state = data.clone().to(self.device)
-
-        with torch.no_grad():
-            for t in times:
-                if t > dt:
-                    back_mean = state - dt * state / t
-                    back_var = ((self.pis_scale**2) * dt * (t - dt)) / t
-                    noise = torch.randn_like(state, device=self.device)
-                    state_ = back_mean + torch.sqrt(back_var) * noise
-                    log_pb += -0.5 * (noise**2 + logtwopi + torch.log(back_var)).sum(1)
-                else:
-                    state_ = torch.zeros_like(state, device=self.device)
-
-                aug_state = torch.cat([state_, torch.zeros_like(state_[..., :1])], dim=-1)
-                forward_mean = self.pis_sde.f(t - dt, aug_state)[..., :-1]
-                forward_var = self.pis_sde.g(t - dt, aug_state)[..., :-1] ** 2
-
-                noise = ((state - state_) - dt * forward_mean) / (
-                    np.sqrt(dt) * torch.sqrt(forward_var)
-                )
-                log_pf += -0.5 * (noise**2 + logtwopi + np.log(dt) + torch.log(forward_var)).sum(
-                    1
-                )
-
-                state = state_
-
-        return log_pf, log_pb
-
-    def step_with_uw(self, t, state, dt):
-        noise = torch.randn_like(state) * np.sqrt(dt)
-        f_value = self.pis_sde.f(t, state)
-        g_coeff = self.pis_sde.g(t, state)
-        new_state = state + f_value * dt + g_coeff * noise
-        uw_term = (f_value[:, :-1] * noise[:, :-1]).sum(dim=1) / self.pis_scale
-        return new_state, uw_term
-
-    def get_cfm_loss(self, samples: torch.Tensor) -> torch.Tensor:
-        x0 = self.cfm_prior.sample(self.num_samples_to_sample_from_buffer)
-        # x0 = (
-        #     torch.randn(
-        #         self.num_samples_to_sample_from_buffer,
-        #         self.energy_function.dimensionality,
-        #         device=self.device,
-        #     )
-        #     * self.cfm_prior_std
-        # )
-        x1 = samples
-
-        t, xt, ut = self.conditional_flow_matcher.sample_location_and_conditional_flow(x0, x1)
-
-        vt = self.cfm_net(t, xt)
-        return (vt - ut).pow(2).mean(dim=-1)
 
     def should_train_cfm(self, batch_idx: int) -> bool:
         return self.nll_with_cfm
@@ -371,22 +265,24 @@ class PISLitModule(LightningModule):
             self.num_samples_to_sample_from_buffer, self.dim + 1, device=self.device
         )
 
-        aug_output = self.integrate(
-            self.pis_sde,
+        x_1, r_k_reg = self.integrate(
+            self.dds_sde,
             aug_prior_samples,
-            return_full_trajectory=True,
+            return_full_trajectory=False,
             no_grad=False,
             reverse_time=False,
             time_range=self.time_range,
-        )[-1]
-        x_1, quad_reg = aug_output[..., :-1], aug_output[..., -1]
+        )
+        
+        
+        
         prior_ll = self.prior.log_prob(x_1).mean() / (self.dim + 1)
         sample_ll = self.energy_function(x_1).mean() / (self.dim + 1)
         term_loss = prior_ll - sample_ll
-        quad_reg = (quad_reg).mean() / (self.dim + 1)
-        pis_loss = term_loss + quad_reg
+        quad_reg = (r_k_reg).mean() / (self.dim + 1)
+        dds_loss = term_loss + quad_reg
 
-        return pis_loss, prior_ll, sample_ll, quad_reg, term_loss
+        return dds_loss, prior_ll, sample_ll, quad_reg, term_loss 
 
     def generate_samples(
         self,
@@ -405,7 +301,7 @@ class PISLitModule(LightningModule):
             return_full_trajectory=return_full_trajectory,
             diffusion_scale=diffusion_scale,
             time_range=self.time_range,
-        )[..., :-1]
+        )[0]
 
     def integrate(
         self,
@@ -414,56 +310,35 @@ class PISLitModule(LightningModule):
         reverse_time=True,
         return_full_trajectory=False,
         diffusion_scale=1.0,
-        no_grad=True,
+        no_grad=False,
         time_range=1.0,
     ) -> torch.Tensor:
-        trajectory = integrate_sde(
-            sde or self.pis_sde,
+        trajectory, r_k_reg = integrate_sde(
+            sde or self.dds_sde,
             samples,
             self.num_integration_steps,
-            self.energy_function,
             diffusion_scale=diffusion_scale,
             reverse_time=reverse_time,
-            no_grad=no_grad,
+            no_grad=False,
             time_range=time_range,
+            var_preserve=True
         )
         if return_full_trajectory:
-            return trajectory
-        return trajectory[-1]
+            return trajectory, r_k_reg
+        return trajectory[-1], r_k_reg
 
-    def compute_nll(
-        self,
-        cnf,
-        prior,
-        samples: torch.Tensor,
-        num_integration_steps=1,
-        method="dopri5",
-    ):
-        aug_samples = torch.cat(
-            [samples, torch.zeros(samples.shape[0], 1, device=samples.device)], dim=-1
-        )
 
-        num_integration_steps = self.num_integration_steps
-        if self.nll_integration_method == "dopri5":
-            num_integration_steps = 1
-
-        aug_output = cnf.integrate(aug_samples)[-1]
-        x_1, logdetjac = aug_output[..., :-1], aug_output[..., -1]
-        log_p_1 = prior.log_prob(x_1)
-        log_p_0 = log_p_1 + logdetjac
-        nll = -log_p_0
-        return nll, x_1, logdetjac, log_p_1
 
     def training_step(self, batch, batch_idx):
         loss = 0.0
-        pis_loss, prior_ll, sample_ll, quad_reg, term_loss = self.get_loss()
-        self.pis_train_loss(pis_loss)
-        self.pis_prior_ll(prior_ll)
-        self.pis_sample_ll(sample_ll)
-        self.pis_reg_loss(quad_reg)
-        self.pis_term_loss(term_loss)
+        dds_loss, prior_ll, sample_ll, quad_reg, term_loss = self.get_loss()
+        self.dds_train_loss(dds_loss)
+        self.dds_prior_ll(prior_ll)
+        self.dds_sample_ll(sample_ll)
+        self.dds_reg_loss(quad_reg)
+        self.dds_term_loss(term_loss)
 
-        loss = loss + pis_loss
+        loss = loss + dds_loss
 
         if self.should_train_cfm(batch_idx):
             if self.hparams.debug_use_train_data:
@@ -496,11 +371,11 @@ class PISLitModule(LightningModule):
 
         self.log_dict(
             {
-                "train/pis_loss": self.pis_train_loss,
-                "train/pis_prior_ll": self.pis_prior_ll,
-                "train/pis_sample_ll": self.pis_sample_ll,
-                "train/pis_reg_loss": self.pis_reg_loss,
-                "train/pis_term_loss": self.pis_term_loss,
+                "train/dds_loss": self.dds_train_loss,
+                "train/dds_prior_ll": self.dds_prior_ll,
+                "train/dds_sample_ll": self.dds_sample_ll,
+                "train/dds_reg_loss": self.dds_reg_loss,
+                "train/dds_term_loss": self.dds_term_loss,
             },
             on_step=True,
             on_epoch=False,
@@ -509,103 +384,6 @@ class PISLitModule(LightningModule):
 
         return loss
 
-    def compute_log_z(self, cnf, prior, samples, prefix, name):
-        nll, forwards_samples, logdetjac, log_p_1 = self.compute_nll(cnf, prior, samples)
-        logz = self.energy_function(samples) + nll
-        logz_metric = getattr(self, f"{prefix}_{name}logz")
-        logz_metric.update(logz)
-        self.log(
-            f"{prefix}/{name}logz",
-            logz_metric,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-
-    def compute_and_log_nll(self, cnf, prior, samples, prefix, name):
-        cnf.nfe = 0.0
-        nll, forwards_samples, logdetjac, log_p_1 = self.compute_nll(cnf, prior, samples)
-        nfe_metric = getattr(self, f"{prefix}_{name}nfe")
-        nll_metric = getattr(self, f"{prefix}_{name}nll")
-        logdetjac_metric = getattr(self, f"{prefix}_{name}nll_logdetjac")
-        log_p_1_metric = getattr(self, f"{prefix}_{name}nll_log_p_1")
-        nfe_metric.update(cnf.nfe)
-        nll_metric.update(nll)
-        logdetjac_metric.update(logdetjac)
-        log_p_1_metric.update(log_p_1)
-
-        self.log_dict(
-            {
-                f"{prefix}/{name}_nfe": nfe_metric,
-                f"{prefix}/{name}nll_logdetjac": logdetjac_metric,
-                f"{prefix}/{name}nll_log_p_1": log_p_1_metric,
-            },
-            on_epoch=True,
-        )
-        self.log(
-            f"{prefix}/{name}nll",
-            nll_metric,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        return forwards_samples
-
-    def pis_logZ(self):
-        times = torch.linspace(0.0, self.time_range, self.num_integration_steps + 1).to(
-            self.device
-        )[:-1]
-        uw_term = 0
-        dt = 1.0 / self.num_integration_steps
-        state = torch.zeros(self.eval_batch_size, self.dim + 1).to(self.device)
-        for t in times:
-            state, cur_uw_term = self.step_with_uw(t, state, dt)
-            uw_term += cur_uw_term
-
-        loss = (
-            state[:, -1]
-            + uw_term
-            + self.prior.log_prob(state[:, :-1])
-            - self.energy_function(state[:, :-1])
-        )
-
-        log_weight = -loss + loss.mean()
-        unnormal_weight = torch.exp(log_weight)
-        weight = unnormal_weight / unnormal_weight.sum()
-        half_unnormal_weight = torch.exp(log_weight / 2)
-        half_weigh = half_unnormal_weight / half_unnormal_weight.sum()
-
-        logZ_lb = -loss.mean()
-        logZ_ub = torch.sum(-weight * loss)
-        logZ_hb = torch.sum(-half_weigh * loss)
-        logZ = torch.log(torch.mean(torch.exp(log_weight))) - loss.mean()
-
-        return state[:, :-1], logZ_lb, logZ_ub, logZ_hb, logZ
-
-    def gfn_log_Z(self):
-        state, log_pf, log_pb = self.fwd_traj()
-        log_r = self.energy_function(state)
-        log_weight = log_r - log_pf + log_pb
-        log_Z = logmeanexp(log_weight)
-        log_Z_lb = log_weight.mean()
-
-        return state, log_Z, log_Z_lb
-
-    def get_elbo(self, data, prefix, name, num_evals=10):
-        bsz = data.shape[0]
-        data = data.view(bsz, 1, self.dim).repeat(1, num_evals, 1).view(bsz * num_evals, self.dim)
-        log_pf, log_pb = self.bwd_traj(data)
-        log_weight = (log_pf - log_pb).view(bsz, num_evals)
-        log_weight = logmeanexp(log_weight, dim=1)
-        elbo_metric = getattr(self, f"{prefix}_{name}gfn_elbo")
-        elbo_metric.update(log_weight)
-        self.log(
-            f"{prefix}/gfn_elbo",
-            elbo_metric,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
 
     def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
         optimizer.step(closure=optimizer_closure)
@@ -619,7 +397,7 @@ class PISLitModule(LightningModule):
         # self.last_samples = self.generate_samples()
         # self.last_energies = self.energy_function(self.last_samples)
         self.last_samples = self.generate_samples(
-            self.pis_sde, diffusion_scale=self.diffusion_scale
+            self.dds_sde, diffusion_scale=self.diffusion_scale
         )
         self.last_energies = self.energy_function(self.last_samples)
         self.buffer.add(self.last_samples, self.last_energies)
@@ -640,7 +418,7 @@ class PISLitModule(LightningModule):
 
         if self.last_samples is None:
             self.last_samples = self.generate_samples(
-                self.pis_sde, diffusion_scale=self.diffusion_scale
+                self.dds_sde, diffusion_scale=self.diffusion_scale
             )
 
         self.outputs[f"{prefix}/data"] = batch
@@ -670,43 +448,6 @@ class PISLitModule(LightningModule):
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         self.eval_step("test", batch, batch_idx)
 
-    def generate_cfm_samples(self, batch_size):
-        def reverse_wrapper(model):
-            def fxn(t, x, args=None):
-                if t.ndim == 0:
-                    t = t.unsqueeze(0)
-
-                return model(t.repeat(len(x)), x)
-
-            return fxn
-
-        with torch.no_grad():
-            shape = (
-                batch_size,
-                self.energy_function.dimensionality,
-            )
-
-            num_integration_steps = self.num_integration_steps
-            if self.nll_integration_method == "dopri5":
-                num_integration_steps = 2
-
-            # noise = torch.randn(shape, device=self.device) * self.cfm_prior_std
-            noise = self.cfm_prior.sample(batch_size)
-
-            try:
-                traj = odeint(
-                    reverse_wrapper(self.cfm_net),
-                    noise,
-                    t=torch.linspace(0, 1, num_integration_steps, device=self.device),
-                    method=self.nll_integration_method,
-                )
-                return traj[-1]
-            except (RuntimeError, AssertionError) as e:
-                print(e)
-                print("Falling back on fixed-step integration")
-                self.nfe = 0.0
-                time = torch.linspace(0, 1, 1000 + 1, device=self.device)
-                return odeint(reverse_wrapper(self.cfm_net), noise, t=time, method="euler")[-1]
 
     def scatter_prior(self, prefix, outputs):
         wandb_logger = get_wandb_logger(self.loggers)
@@ -727,23 +468,23 @@ class PISLitModule(LightningModule):
         wandb_logger = get_wandb_logger(self.loggers)
 
         samples_gfn, gfn_logZ, logZ_lb = self.gfn_log_Z()
-        samples_pis, pis_logZ_lb, pis_logZ_ub, pis_logZ_hb, pis_logZ = self.pis_logZ()
+        samples_dds, dds_logZ_lb, dds_logZ_ub, dds_logZ_hb, dds_logZ = self.dds_logZ()
         buffer_samples, _, _ = self.buffer.sample(self.eval_batch_size)
 
         metrics = {
             f"{prefix}/gfn_logZ": gfn_logZ,
             f"{prefix}/logZ_lb": logZ_lb,
-            f"{prefix}/pis_logZ_lb": pis_logZ_lb,
-            f"{prefix}/pis_logZ_ub": pis_logZ_ub,
-            f"{prefix}/pis_logZ_hb": pis_logZ_hb,
-            f"{prefix}/pis_logZ": pis_logZ,
+            f"{prefix}/dds_logZ_lb": dds_logZ_lb,
+            f"{prefix}/dds_logZ_ub": dds_logZ_ub,
+            f"{prefix}/dds_logZ_hb": dds_logZ_hb,
+            f"{prefix}/dds_logZ": dds_logZ,
         }
 
         self.energy_function.log_samples(
             samples_gfn, wandb_logger, f"{prefix}_samples/gfn_samples"
         )
         self.energy_function.log_samples(
-            samples_pis, wandb_logger, f"{prefix}_samples/pis_samples"
+            samples_dds, wandb_logger, f"{prefix}_samples/dds_samples"
         )
         self.energy_function.log_samples(
             buffer_samples, wandb_logger, f"{prefix}_samples/buffer_samples"
@@ -769,6 +510,13 @@ class PISLitModule(LightningModule):
                 f"{prefix}_samples/unprioritized_buffer_samples",
             )
 
+        # pad with time dimension 1
+        names, dists = compute_distribution_distances(
+            self.outputs[f"{prefix}/gen"][:, None], self.outputs[f"{prefix}/data"][:, None]
+        )
+        names = [f"{prefix}/{name}" for name in names]
+        d = dict(zip(names, dists))
+        metrics.update(d)
         self.log_dict(metrics, sync_dist=True)
         self.outputs = {}
 
@@ -789,12 +537,13 @@ class PISLitModule(LightningModule):
         """
 
         self.prior = self.partial_prior(
-            device=self.device, scale=self.pis_scale * np.sqrt(self.time_range)
+            device=self.device, scale=self.dds_scale * np.sqrt(self.time_range)
         )
         self.net = self.net.to(self.device)
-        self.pis_sde = SDE(self.drift, self.diffusion).to(self.device)
+        self.tcond = self.tcond.to(self.device)
+        self.dds_sde = SDE(self.net, None).to(self.device)
         init_states = self.generate_samples(
-            self.pis_sde, self.num_init_samples, diffusion_scale=self.diffusion_scale
+            self.dds_sde, self.num_init_samples, diffusion_scale=self.diffusion_scale
         )
         init_energies = self.energy_function(init_states)
 
