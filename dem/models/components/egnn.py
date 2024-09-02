@@ -51,6 +51,9 @@ class EGNN_dynamics(nn.Module):
 
 
     def forward(self, t, xs):
+        if len(t.shape) == 0:
+            t = torch.ones(xs.shape[0]).to(xs.device) * t
+            
         t = t.unsqueeze(-1)
         n_batch = xs.shape[0]
         if self.add_virtual:

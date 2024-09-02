@@ -65,7 +65,7 @@ class CNF(torch.nn.Module):
         method="dopri5",
         atol=1e-5,
         rtol=1e-5,
-        max_steps_till_fallback=3000,
+        max_steps_till_fallback=200,
         num_steps=100,
     ):
         super().__init__()
@@ -111,7 +111,7 @@ class CNF(torch.nn.Module):
 
         self.nfe += 1
         # print(div.mean())
-        return torch.cat([dx.detach(), div[:, None].detach()], dim=-1)
+        return torch.cat([dx, div[:, None]], dim=-1)
 
     def integrate(self, x):
         method = self.method
@@ -123,8 +123,8 @@ class CNF(torch.nn.Module):
             return odeint(self, x, t=time, method=method, atol=self.atol, rtol=self.rtol)
 
         except (RuntimeError, AssertionError) as e:
-            print(e)
-            print("Falling back on fixed-step integration")
+            #print(e)
+            #print("Falling back on fixed-step integration")
             self.nfe = 0.0
             time = torch.linspace(
                 start_time, end_time, self.max_steps_till_fallback + 1, device=x.device

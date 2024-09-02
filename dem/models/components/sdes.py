@@ -5,10 +5,12 @@ class SDE(torch.nn.Module):
     noise_type = "diagonal"
     sde_type = "ito"
 
-    def __init__(self, drift, diffusion):
+    def __init__(self, drift, diffusion, 
+                 noise_schedule=None):
         super().__init__()
         self.drift = drift
         self.diffusion = diffusion
+        self.noise_schedule = noise_schedule
 
     def f(self, t, x):
         if t.dim() == 0:
@@ -19,6 +21,7 @@ class SDE(torch.nn.Module):
 
     def g(self, t, x):
         return self.diffusion(t, x)
+    
 
 
 class VEReverseSDE(torch.nn.Module):

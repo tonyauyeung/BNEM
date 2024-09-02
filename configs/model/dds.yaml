@@ -1,4 +1,4 @@
-_target_: dem.models.pis_module.PISLitModule
+_target_: dem.models.dds_module.DDSLitModule
 
 optimizer:
   _target_: torch.optim.Adam
@@ -16,8 +16,6 @@ scheduler:
 defaults:
   - net:
       - mlp
-  - noise_schedule:
-      - geometric
 
 tnet:
   _target_: dem.models.components.mlp.TimeConder
@@ -26,6 +24,16 @@ tnet:
   out_dim: 1
   num_layers: 2
 
+clipper_gen:
+  _target_: dem.models.components.clipper.Clipper
+  should_clip_scores: True
+  should_clip_log_rewards: False
+  max_score_norm: 100
+  min_log_reward: null
+
+noise_schedule:
+    _target_: dem.models.components.noise_schedules.DDSNoiseSchedule
+    sigma_min: 0.0001
 
 num_samples_to_generate_per_epoch: 1024
 eval_batch_size: 1024
@@ -34,10 +42,11 @@ num_integration_steps: 1000
 
 lr_scheduler_update_frequency: ${trainer.check_val_every_n_epoch}
 
+
 # compile model for faster training with pytorch 2.0
 compile: false
 
 use_ema: false
 
-pis_scale: 1.
+dds_scale: 1.
 time_range: 1.

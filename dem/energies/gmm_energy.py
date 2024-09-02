@@ -164,7 +164,7 @@ class GMM(BaseEnergyFunction):
     ) -> None:
         if wandb_logger is None:
             return
-
+        
         if self.should_unnormalize and should_unnormalize:
             samples = self.unnormalize(samples)
         samples_fig = self.get_single_dataset_fig(samples, name)

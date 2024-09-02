@@ -2,6 +2,7 @@ from typing import Tuple, Dict, Any, NamedTuple, Optional
 
 import torch
 import numpy as np
+import copy
 
 from fab.types_ import LogProbFunc
 from fab.sampling_methods.transition_operators.base import TransitionOperator
@@ -48,18 +49,18 @@ class AnnealedImportanceSampler:
         return logging_info
 
 
-    def sample_and_log_weights(self, x, base_prop, logging: bool = True,
+    def sample_and_log_weights(self, x, flow_prop, base_prop, logging: bool = True,
                                ) -> Tuple[Point, torch.Tensor]:
         # Initialise AIS with samples from the base distribution.
         batch_size = x.shape[0]
         point = create_point(x,
-                             None,#placeholder for self.base_log_prob
+                             flow_prop,#placeholder for self.base_log_prob
                              self.target_log_prob,
                              with_grad=self.transition_operator.uses_grad_info,
                              log_q_x=base_prop
                              )
         log_w = get_intermediate_log_prob(
-            point, self.B_space[1], self.alpha, self.p_target) - log_prob_p0
+            point, self.B_space[1], self.alpha, self.p_target) - base_prop
         point, log_w = self._remove_nan_and_infs(point, log_w, descriptor="chain init")
 
         # Save effective sample size over samples from base distribution if logging.
@@ -71,7 +72,7 @@ class AnnealedImportanceSampler:
         # Move through sequence of intermediate distributions via MCMC.
         for j in range(1, self.n_intermediate_distributions+1):
             point, log_w = self.perform_transition(point, log_w, j)
-
+        
         point, log_w = self._remove_nan_and_infs(point, log_w, descriptor="chain end")
 
         # Save effective sample size if logging.
@@ -82,11 +83,12 @@ class AnnealedImportanceSampler:
                 log_Z = log_Z_N - torch.log(torch.ones_like(log_Z_N) * batch_size)
                 self._logging_info = LoggingInfo(ess_base=ess_base, ess_ais=ess_ais,
                                                  log_Z=log_Z.cpu().item())
-        return point, log_w.detach()
+        return point.x, log_w.detach()
 
 
     def perform_transition(self, x_new: Point, log_w: torch.Tensor, j: int):
         """" Transition via MCMC with the j'th intermediate distribution as the target."""
+        old_x = copy.deepcopy(x_new)
         x_new = self.transition_operator.transition(x_new, j, self.B_space[j])
         if self.B_space[j + 1] != self.B_space[j]:
             log_numerator = get_intermediate_log_prob(x_new,

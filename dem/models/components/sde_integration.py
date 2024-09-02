@@ -45,11 +45,11 @@ def euler_maruyama_step(
 
     # Update the state
     if var_preserve:
-        sigma_max = sde.h(torch.ones_like(t), x)
-        lambda_k = 1 - torch.sqrt(1 - sde.a(t, x, dt))
-        x_next = (1 - lambda_k) * x + \
-            2 * sigma_max **2 * lambda_k * drift/dt + sigma_max * torch.sqrt(sde.a(t, x, dt)) * torch.randn_like(x)
-        drift = 2 * sigma_max **2 * lambda_k **2 / sde.a(t, x, dt) * torch.norm(drift / dt, dim=-1)
+        sigma_max = torch.full_like(t, sde.noise_schedule.sigma_max)
+        lambda_k = 1 - torch.sqrt(1 - sde.noise_schedule.a(t, dt))
+        x_next = torch.sqrt(1 - sde.noise_schedule.a(t, dt)) * x + \
+            2 * sigma_max **2 * lambda_k * drift/dt + sigma_max * torch.sqrt(sde.noise_schedule.a(t, dt)) * torch.randn_like(x)
+        drift = 2 * sigma_max **2 * lambda_k **2 / sde.noise_schedule.a(t, dt) * torch.norm(drift / dt, dim=-1)
     else:
         diffusion = diffusion_scale * sde.g(t, x) * np.sqrt(dt) * torch.randn_like(x)
         x_next = x + drift + diffusion
@@ -100,8 +100,7 @@ def integrate_sde(
     samples = []
     
     if var_preserve:#r for DDS sampler
-        r_k = torch.zeros([x0.shape[0]])
-
+        r_k = torch.zeros([x0.shape[0]]).to(x0.device)
     with conditional_no_grad(no_grad):
         for t in times:
             if not metroplolis_hasting:
@@ -122,11 +121,12 @@ def integrate_sde(
                 test_set = energy_function._val_set
                 clip_range = [torch.min(test_set), torch.max(test_set)]
                 #x = torch.clamp(x, clip_range[0], clip_range[1])
-            samples.append(x.detach())
+            samples.append(x)
 
     assert not torch.isnan(x0).any()
     samples = torch.stack(samples)
     # Screen energies for each batch item
+    '''
     for i in range(samples.shape[1]):
         if torch.isnan(samples[-1, i]).any():
             roll_back = False
@@ -138,14 +138,13 @@ def integrate_sde(
             if not roll_back:
                 samples[-1, i] = x0[i]
     assert not torch.isnan(samples[-1]).any()
-    
+    '''
     if negative_time:
         print("doing negative time descent...")
         samples_langevin = negative_time_descent(
             x, energy_function, num_steps=num_negative_time_steps
         )
         samples = torch.concatenate((samples, samples_langevin), axis=0)
-        
     if not var_preserve:
         return samples
     else:

@@ -1,0 +1,61 @@
+_target_: dem.models.fab_module.FABLitModule
+
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: true
+  lr: 0.001
+  weight_decay: 0.0
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  _partial_: true
+  mode: min
+  factor: 0.1
+  patience: 10
+
+defaults:
+  - net:
+      - mlp
+  - noise_schedule:
+      - geometric
+
+buffer:
+  _target_: dem.models.components.replay_buffer.ReplayBuffer
+  dim: ${energy.dimensionality}
+  max_length: 10000
+  min_sample_length: 1000
+  initial_sampler: null
+  device: ${trainer.accelerator}
+  temperature: 1.0
+  with_q: True
+
+score_scaler: null
+
+num_init_samples: 1024
+num_samples_to_generate_per_epoch: 1024
+num_samples_to_sample_from_buffer: 512
+eval_batch_size: 1024
+
+num_integration_steps: 250
+
+lr_scheduler_update_frequency: ${trainer.check_val_every_n_epoch}
+
+input_scaling_factor: null
+output_scaling_factor: null
+
+# compile model for faster training with pytorch 2.0
+compile: false
+
+use_ema: false
+use_exact_likelihood: False
+
+# initialize the buffer with samples from the prior
+init_from_prior: true
+
+
+# number of samples to save at the end of training
+num_samples_to_save: 100000
+
+n_ais_intermediate_distributions: 5
+n_ais_inner_steps: 10
+ais_init_step_size: 5.

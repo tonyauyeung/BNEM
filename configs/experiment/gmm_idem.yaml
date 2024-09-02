@@ -7,7 +7,6 @@
 # this allows you to overwrite only specified parameters
 defaults:
   - override /energy: gmm
-  - override /model/noise_schedule: quadratic
 
 tags: ["GMM", "iDEM"]
 
@@ -20,13 +19,7 @@ logger:
 
 model:
   noise_schedule:
-    _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
-    #sigma_min: 0.00001
-    #sigma_max: 1.0
-    beta: 1.0
-
-  buffer:
-    prioritize: False
+    sigma_max: 1.0
 
   partial_prior:
     _target_: dem.energies.base_prior.Prior
@@ -40,18 +33,8 @@ model:
     max_score_norm: 70.
     min_log_reward: null
 
-  lambda_weighter:
-    _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
-    _partial_: true
-    epsilon: 1e-3
-
   optimizer:
-    lr: 5e-4
-
-  diffusion_scale: 1.0
-
-  num_estimator_mc_samples: 500
-  num_samples_to_generate_per_epoch: 1000
+    lr: 1e-3
 
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000

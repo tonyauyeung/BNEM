@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import ot as pot
 import torch
 from lightning import LightningModule
 from lightning.pytorch.loggers import WandbLogger
@@ -16,14 +17,12 @@ from torchmetrics import MeanMetric
 
 from dem.energies.base_energy_function import BaseEnergyFunction
 from dem.utils.logging_utils import fig_to_image
+from dem.utils.data_utils import remove_mean, calculate_rmsd_matrix
 
 from .components.clipper import Clipper
-from .components.cnf import CNF
-from .components.distribution_distances import compute_distribution_distances
 from .components.ema import EMAWrapper
 from .components.lambda_weighter import BaseLambdaWeighter
 from .components.noise_schedules import BaseNoiseSchedule
-from .components.prioritised_replay_buffer import PrioritisedReplayBuffer
 from .components.scaling_wrapper import ScalingWrapper
 from .components.score_estimator import estimate_grad_Rt
 from .components.score_scaler import BaseScoreScaler
@@ -104,42 +103,23 @@ class PISLitModule(LightningModule):
     def __init__(
         self,
         net: torch.nn.Module,
+        tnet: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
         scheduler: torch.optim.lr_scheduler,
         energy_function: BaseEnergyFunction,
-        noise_schedule: BaseNoiseSchedule,
-        lambda_weighter: BaseLambdaWeighter,
-        buffer: PrioritisedReplayBuffer,
-        num_init_samples: int,
-        num_estimator_mc_samples: int,
+        noise_schedule: BaseNoiseSchedule,#placeholder
         num_samples_to_generate_per_epoch: int,
         eval_batch_size: int,
-        num_samples_to_sample_from_buffer: int,
         num_integration_steps: int,
         lr_scheduler_update_frequency: int,
-        nll_with_cfm: bool,
-        cfm_sigma: float,
-        cfm_prior_std: float,
         compile: bool,
-        nll_integration_method: str,
-        use_exact_likelihood=False,
-        use_buffer=True,
-        prioritize_cfm_training_samples: bool = False,
-        input_scaling_factor: Optional[float] = None,
-        output_scaling_factor: Optional[float] = None,
         clipper: Optional[Clipper] = None,
-        score_scaler: Optional[BaseScoreScaler] = None,
         partial_prior=None,
         clipper_gen: Optional[Clipper] = None,
-        diffusion_scale=1.0,
-        cfm_loss_weight=1.0,
         pis_scale=1.0,
-        time_range=5.0,
+        time_range=1.0,
         use_ema=False,
-        debug_use_train_data=False,
-        init_from_prior=False,
-        compute_nll_on_train_data=False,
-        use_otcfm=False,
+        version=1,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -156,65 +136,26 @@ class PISLitModule(LightningModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
 
-        self.nll_with_cfm = nll_with_cfm
-        self.cfm_prior_std = cfm_prior_std
-        self.nll_integration_method = nll_integration_method
-
-        flow_matcher = ConditionalFlowMatcher
-        if use_otcfm:
-            flow_matcher = ExactOptimalTransportConditionalFlowMatcher
-
-        self.conditional_flow_matcher = flow_matcher(sigma=cfm_sigma)
-
         self.energy_function = energy_function
-        self.buffer = buffer
         self.dim = self.energy_function.dimensionality
         self.time_range = time_range
         self.pis_scale = pis_scale
-        self.diffusion_scale = diffusion_scale
 
         self.clipper = clipper
         self.clipped_grad_fxn = self.clipper.wrap_grad_fxn(estimate_grad_Rt)
 
         self.net = net(energy_function=energy_function)
-
-        self.cfm_net = net(energy_function=energy_function)
-        if use_ema:
-            self.net = EMAWrapper(self.net)
-            self.cfm_net = EMAWrapper(self.cfm_net)
-        if input_scaling_factor is not None or output_scaling_factor is not None:
-            self.net = ScalingWrapper(self.net, input_scaling_factor, output_scaling_factor)
-
-            self.cfm_net = ScalingWrapper(
-                self.cfm_net, input_scaling_factor, output_scaling_factor
-            )
-
-        self.score_scaler = None
-        if score_scaler is not None:
-            self.score_scaler = self.hparams.score_scaler(noise_schedule)
-
-            self.net = self.score_scaler.wrap_model_for_unscaling(self.net)
-            self.cfm_net = self.score_scaler.wrap_model_for_unscaling(self.cfm_net)
-
-        self.cfm_cnf = CNF(
-            self.cfm_net, is_diffusion=False, use_exact_likelihood=use_exact_likelihood
-        )
-
-        self.num_init_samples = num_init_samples
-        self.num_estimator_mc_samples = num_estimator_mc_samples
+        self.tcond = tnet()
+        
         self.num_samples_to_generate_per_epoch = num_samples_to_generate_per_epoch
         self.eval_batch_size = eval_batch_size
-        self.num_samples_to_sample_from_buffer = num_samples_to_sample_from_buffer
         self.num_integration_steps = num_integration_steps
-
-        self.prioritize_cfm_training_samples = prioritize_cfm_training_samples
 
         self.last_samples = None
         self.last_energies = None
 
         self.partial_prior = partial_prior
         self.clipper_gen = clipper_gen
-        self.compute_nll_on_train_data = compute_nll_on_train_data
 
         self.outputs = {}
 
@@ -223,42 +164,35 @@ class PISLitModule(LightningModule):
         self.pis_sample_ll = MeanMetric()
         self.pis_reg_loss = MeanMetric()
         self.pis_term_loss = MeanMetric()
-        self.cfm_train_loss = MeanMetric()
         self.val_loss = MeanMetric()
         self.test_loss = MeanMetric()
-
-        self.val_nll_logdetjac = MeanMetric()
-        self.test_nll_logdetjac = MeanMetric()
-        self.val_nll_log_p_1 = MeanMetric()
-        self.test_nll_log_p_1 = MeanMetric()
-        self.val_nll = MeanMetric()
-        self.test_nll = MeanMetric()
-        self.val_nfe = MeanMetric()
-        self.test_nfe = MeanMetric()
-        self.val_logz = MeanMetric()
-        self.test_logz = MeanMetric()
-
         self.val_gfn_elbo = MeanMetric()
-        self.test_gfn_elbo = MeanMetric()
 
-        self.val_train_nll_logdetjac = MeanMetric()
-        self.val_train_nll_log_p_1 = MeanMetric()
-        self.val_train_nll = MeanMetric()
-        self.val_train_nfe = MeanMetric()
-        self.val_train_logz = MeanMetric()
-        self.test_train_nll_logdetjac = MeanMetric()
-        self.test_train_nll_log_p_1 = MeanMetric()
-        self.test_train_nll = MeanMetric()
-        self.test_train_nfe = MeanMetric()
-        self.test_train_logz = MeanMetric()
+
+        self.val_energy_w2 = MeanMetric()
+        self.val_dist_total_var = MeanMetric()
+        self.val_ddata_total_var = MeanMetric()
+        self.val_dist_w2 = MeanMetric()
+        self.val_data_w2 = MeanMetric()
+
+    def score(self, x):
+        with torch.no_grad():
+            copy_x = x.detach().clone()
+            copy_x.requires_grad = True
+            with torch.enable_grad():
+                self.energy_function(copy_x).sum().backward()
+                lgv_data = copy_x.grad.data
+            return lgv_data
 
     def drift(self, t, x):
         state = x[:, :-1]
         state = torch.nan_to_num(state)
+        grad = torch.clip(self.score(state), -1e4, 1e4)
         f = torch.clip(self.net(t, state), -1e4, 1e4)
-        dx = torch.nan_to_num(f)
+        dx = torch.nan_to_num(f + self.tcond(t) * grad)
         norm = 0.5 * (dx**2).sum(dim=1, keepdim=True)
         return torch.cat([dx * self.pis_scale, norm], dim=-1)
+
 
     def diffusion(self, t, x):
         coeff = torch.ones_like(x) * self.pis_scale
@@ -346,31 +280,10 @@ class PISLitModule(LightningModule):
         uw_term = (f_value[:, :-1] * noise[:, :-1]).sum(dim=1) / self.pis_scale
         return new_state, uw_term
 
-    def get_cfm_loss(self, samples: torch.Tensor) -> torch.Tensor:
-        x0 = self.cfm_prior.sample(self.num_samples_to_sample_from_buffer)
-        # x0 = (
-        #     torch.randn(
-        #         self.num_samples_to_sample_from_buffer,
-        #         self.energy_function.dimensionality,
-        #         device=self.device,
-        #     )
-        #     * self.cfm_prior_std
-        # )
-        x1 = samples
-
-        t, xt, ut = self.conditional_flow_matcher.sample_location_and_conditional_flow(x0, x1)
-
-        vt = self.cfm_net(t, xt)
-        return (vt - ut).pow(2).mean(dim=-1)
-
-    def should_train_cfm(self, batch_idx: int) -> bool:
-        return self.nll_with_cfm
-
     def get_loss(self):
         aug_prior_samples = torch.zeros(
-            self.num_samples_to_sample_from_buffer, self.dim + 1, device=self.device
+            self.eval_batch_size, self.dim + 1, device=self.device
         )
-
         aug_output = self.integrate(
             self.pis_sde,
             aug_prior_samples,
@@ -393,7 +306,7 @@ class PISLitModule(LightningModule):
         sde,
         num_samples: Optional[int] = None,
         return_full_trajectory: bool = False,
-        diffusion_scale=1.0,
+        pis_scale=1.0,
     ) -> torch.Tensor:
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
         samples = torch.zeros(num_samples, self.dim + 1, device=self.device)
@@ -403,7 +316,7 @@ class PISLitModule(LightningModule):
             samples=samples,
             reverse_time=False,
             return_full_trajectory=return_full_trajectory,
-            diffusion_scale=diffusion_scale,
+            pis_scale=pis_scale,
             time_range=self.time_range,
         )[..., :-1]
 
@@ -413,7 +326,7 @@ class PISLitModule(LightningModule):
         samples: torch.Tensor = None,
         reverse_time=True,
         return_full_trajectory=False,
-        diffusion_scale=1.0,
+        pis_scale=1.0,
         no_grad=True,
         time_range=1.0,
     ) -> torch.Tensor:
@@ -422,7 +335,7 @@ class PISLitModule(LightningModule):
             samples,
             self.num_integration_steps,
             self.energy_function,
-            diffusion_scale=diffusion_scale,
+            diffusion_scale=pis_scale,
             reverse_time=reverse_time,
             no_grad=no_grad,
             time_range=time_range,
@@ -431,28 +344,6 @@ class PISLitModule(LightningModule):
             return trajectory
         return trajectory[-1]
 
-    def compute_nll(
-        self,
-        cnf,
-        prior,
-        samples: torch.Tensor,
-        num_integration_steps=1,
-        method="dopri5",
-    ):
-        aug_samples = torch.cat(
-            [samples, torch.zeros(samples.shape[0], 1, device=samples.device)], dim=-1
-        )
-
-        num_integration_steps = self.num_integration_steps
-        if self.nll_integration_method == "dopri5":
-            num_integration_steps = 1
-
-        aug_output = cnf.integrate(aug_samples)[-1]
-        x_1, logdetjac = aug_output[..., :-1], aug_output[..., -1]
-        log_p_1 = prior.log_prob(x_1)
-        log_p_0 = log_p_1 + logdetjac
-        nll = -log_p_0
-        return nll, x_1, logdetjac, log_p_1
 
     def training_step(self, batch, batch_idx):
         loss = 0.0
@@ -464,35 +355,6 @@ class PISLitModule(LightningModule):
         self.pis_term_loss(term_loss)
 
         loss = loss + pis_loss
-
-        if self.should_train_cfm(batch_idx):
-            if self.hparams.debug_use_train_data:
-                cfm_samples = self.energy_function.sample_train_set(
-                    self.num_samples_to_sample_from_buffer
-                )
-            else:
-                cfm_samples, _, _ = self.buffer.sample(
-                    self.num_samples_to_sample_from_buffer,
-                    prioritize=self.prioritize_cfm_training_samples,
-                )
-            times = torch.rand(
-                (self.num_samples_to_sample_from_buffer,), device=cfm_samples.device
-            )
-
-            cfm_loss = self.get_cfm_loss(cfm_samples)
-            self.log_dict(
-                t_stratified_loss(times, cfm_loss, loss_name="train/stratified/cfm_loss")
-            )
-            cfm_loss = cfm_loss.mean()
-            self.cfm_train_loss(cfm_loss)
-            loss = loss + self.hparams.cfm_loss_weight * cfm_loss
-            self.log(
-                "train/cfm_loss",
-                self.cfm_train_loss,
-                on_step=True,
-                on_epoch=False,
-                prog_bar=True,
-            )
 
         self.log_dict(
             {
@@ -509,47 +371,6 @@ class PISLitModule(LightningModule):
 
         return loss
 
-    def compute_log_z(self, cnf, prior, samples, prefix, name):
-        nll, forwards_samples, logdetjac, log_p_1 = self.compute_nll(cnf, prior, samples)
-        logz = self.energy_function(samples) + nll
-        logz_metric = getattr(self, f"{prefix}_{name}logz")
-        logz_metric.update(logz)
-        self.log(
-            f"{prefix}/{name}logz",
-            logz_metric,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-
-    def compute_and_log_nll(self, cnf, prior, samples, prefix, name):
-        cnf.nfe = 0.0
-        nll, forwards_samples, logdetjac, log_p_1 = self.compute_nll(cnf, prior, samples)
-        nfe_metric = getattr(self, f"{prefix}_{name}nfe")
-        nll_metric = getattr(self, f"{prefix}_{name}nll")
-        logdetjac_metric = getattr(self, f"{prefix}_{name}nll_logdetjac")
-        log_p_1_metric = getattr(self, f"{prefix}_{name}nll_log_p_1")
-        nfe_metric.update(cnf.nfe)
-        nll_metric.update(nll)
-        logdetjac_metric.update(logdetjac)
-        log_p_1_metric.update(log_p_1)
-
-        self.log_dict(
-            {
-                f"{prefix}/{name}_nfe": nfe_metric,
-                f"{prefix}/{name}nll_logdetjac": logdetjac_metric,
-                f"{prefix}/{name}nll_log_p_1": log_p_1_metric,
-            },
-            on_epoch=True,
-        )
-        self.log(
-            f"{prefix}/{name}nll",
-            nll_metric,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-        )
-        return forwards_samples
 
     def pis_logZ(self):
         times = torch.linspace(0.0, self.time_range, self.num_integration_steps + 1).to(
@@ -611,18 +432,24 @@ class PISLitModule(LightningModule):
         optimizer.step(closure=optimizer_closure)
         if self.hparams.use_ema:
             self.net.update_ema()
-            if self.should_train_cfm(batch_idx):
-                self.cfm_net.update_ema()
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
         # self.last_samples = self.generate_samples()
         # self.last_energies = self.energy_function(self.last_samples)
         self.last_samples = self.generate_samples(
-            self.pis_sde, diffusion_scale=self.diffusion_scale
+            self.pis_sde, pis_scale=self.pis_scale
         )
         self.last_energies = self.energy_function(self.last_samples)
-        self.buffer.add(self.last_samples, self.last_energies)
+        
+        prefix = 'val'
+        self._log_energy_w2(prefix=prefix)
+        self._log_data_w2(prefix=prefix)
+        if self.energy_function.is_molecule:
+            self._log_dist_total_var(prefix=prefix)
+            self._log_dist_w2(prefix=prefix)
+        else:
+            self._log_data_total_var(prefix=prefix)
 
     def eval_step(self, prefix: str, batch: torch.Tensor, batch_idx: int) -> None:
         """Perform a single eval step on a batch of data from the validation set.
@@ -640,7 +467,7 @@ class PISLitModule(LightningModule):
 
         if self.last_samples is None:
             self.last_samples = self.generate_samples(
-                self.pis_sde, diffusion_scale=self.diffusion_scale
+                self.pis_sde, pis_scale=self.pis_scale
             )
 
         self.outputs[f"{prefix}/data"] = batch
@@ -652,61 +479,12 @@ class PISLitModule(LightningModule):
 
         self.get_elbo(batch, prefix, "")
 
-        if self.nll_with_cfm:
-            prior_samples = self.compute_and_log_nll(
-                self.cfm_cnf, self.cfm_prior, batch, prefix, ""
-            )
-            self.outputs[f"{prefix}/cfm_prior"] = prior_samples
-
-            if self.compute_nll_on_train_data:
-                train_samples = self.energy_function.sample_train_set(self.eval_batch_size)
-                _ = self.compute_and_log_nll(
-                    self.cfm_cnf, self.cfm_prior, train_samples, prefix, "train_"
-                )
 
     def validation_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         self.eval_step("val", batch, batch_idx)
 
     def test_step(self, batch: torch.Tensor, batch_idx: int) -> None:
         self.eval_step("test", batch, batch_idx)
-
-    def generate_cfm_samples(self, batch_size):
-        def reverse_wrapper(model):
-            def fxn(t, x, args=None):
-                if t.ndim == 0:
-                    t = t.unsqueeze(0)
-
-                return model(t.repeat(len(x)), x)
-
-            return fxn
-
-        with torch.no_grad():
-            shape = (
-                batch_size,
-                self.energy_function.dimensionality,
-            )
-
-            num_integration_steps = self.num_integration_steps
-            if self.nll_integration_method == "dopri5":
-                num_integration_steps = 2
-
-            # noise = torch.randn(shape, device=self.device) * self.cfm_prior_std
-            noise = self.cfm_prior.sample(batch_size)
-
-            try:
-                traj = odeint(
-                    reverse_wrapper(self.cfm_net),
-                    noise,
-                    t=torch.linspace(0, 1, num_integration_steps, device=self.device),
-                    method=self.nll_integration_method,
-                )
-                return traj[-1]
-            except (RuntimeError, AssertionError) as e:
-                print(e)
-                print("Falling back on fixed-step integration")
-                self.nfe = 0.0
-                time = torch.linspace(0, 1, 1000 + 1, device=self.device)
-                return odeint(reverse_wrapper(self.cfm_net), noise, t=time, method="euler")[-1]
 
     def scatter_prior(self, prefix, outputs):
         wandb_logger = get_wandb_logger(self.loggers)
@@ -728,7 +506,6 @@ class PISLitModule(LightningModule):
 
         samples_gfn, gfn_logZ, logZ_lb = self.gfn_log_Z()
         samples_pis, pis_logZ_lb, pis_logZ_ub, pis_logZ_hb, pis_logZ = self.pis_logZ()
-        buffer_samples, _, _ = self.buffer.sample(self.eval_batch_size)
 
         metrics = {
             f"{prefix}/gfn_logZ": gfn_logZ,
@@ -738,36 +515,10 @@ class PISLitModule(LightningModule):
             f"{prefix}/pis_logZ_hb": pis_logZ_hb,
             f"{prefix}/pis_logZ": pis_logZ,
         }
-
-        self.energy_function.log_samples(
-            samples_gfn, wandb_logger, f"{prefix}_samples/gfn_samples"
-        )
-        self.energy_function.log_samples(
-            samples_pis, wandb_logger, f"{prefix}_samples/pis_samples"
-        )
+        buffer_samples = self.energy_function.unnormalize(self.last_samples)
         self.energy_function.log_samples(
             buffer_samples, wandb_logger, f"{prefix}_samples/buffer_samples"
         )
-
-        if self.nll_with_cfm:
-            # Generate data from the CFM
-            # Calculate logZ based on that data
-            cfm_samples = self.generate_cfm_samples(self.eval_batch_size)
-            self.compute_log_z(self.cfm_cnf, self.cfm_prior, cfm_samples, prefix, "")
-            unprioritized_buffer_samples, _, _ = self.buffer.sample(
-                self.eval_batch_size,
-                prioritize=self.prioritize_cfm_training_samples,
-            )
-            if self.energy_function.dimensionality == 2:
-                self.scatter_prior(prefix + "_samples", self.outputs[f"{prefix}/cfm_prior"])
-            self.energy_function.log_samples(
-                cfm_samples, wandb_logger, f"{prefix}_samples/cfm_samples"
-            )
-            self.energy_function.log_samples(
-                unprioritized_buffer_samples,
-                wandb_logger,
-                f"{prefix}_samples/unprioritized_buffer_samples",
-            )
 
         self.log_dict(metrics, sync_dist=True)
         self.outputs = {}
@@ -777,7 +528,181 @@ class PISLitModule(LightningModule):
 
     def on_test_epoch_end(self) -> None:
         self.eval_epoch_end("test")
+        self._log_energy_w2(prefix="test")
+        self._log_data_w2(prefix="test")
+        if self.energy_function.is_molecule:
+            self._log_dist_total_var(prefix="test")
+            self._log_dist_w2(prefix="test")
+        else:
+            self._log_data_total_var(prefix="test")
 
+    def _log_energy_w2(self, prefix="val"):
+        if prefix == "test":
+            data_set = self.energy_function.sample_val_set(self.eval_batch_size)
+            generated_samples = self.generate_samples(
+                self.pis_sde,
+                num_samples=self.eval_batch_size, 
+                pis_scale=self.pis_scale
+            )
+            generated_energies = self.energy_function(generated_samples)
+        else:
+            if self.last_samples is None:
+                return
+            if len(self.last_samples) < self.eval_batch_size:
+                return
+            data_set = self.energy_function.sample_test_set(self.eval_batch_size)
+            generated_samples, generated_energies = self.last_samples, self.last_energies
+        energies = self.energy_function(self.energy_function.normalize(data_set))
+        energy_w2 = pot.emd2_1d(energies.cpu().numpy(), generated_energies.cpu().numpy())#is there something wrong here? weird large number
+
+        self.log(
+            f"{prefix}/energy_w2",
+            self.val_energy_w2(energy_w2),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+    
+    def _log_data_w2(self, prefix="val"):
+        if prefix == "test":
+            data_set = self.energy_function.sample_val_set(self.eval_batch_size)
+            generated_samples = self.generate_samples(
+                self.pis_sde,
+                num_samples=self.eval_batch_size, 
+                pis_scale=self.pis_scale
+            )
+
+        else:
+            if self.last_samples is None:
+                return
+            if len(self.last_samples) < self.eval_batch_size:
+                return
+            generated_samples = self.last_samples
+            data_set = self.energy_function.sample_test_set(self.eval_batch_size)
+        
+        generated_samples = self.energy_function.unnormalize(generated_samples)
+        if self.energy_function.is_molecule:
+            distance_matrix = calculate_rmsd_matrix(data_set.view(-1, 
+                                                                  self.energy_function.n_particles,
+                                                                  self.energy_function.n_spatial_dim),
+                                                    generated_samples.view(-1, 
+                                                                  self.energy_function.n_particles,
+                                                                  self.energy_function.n_spatial_dim)).cpu().numpy()
+        else:
+            distance_matrix = pot.dist(data_set.cpu().numpy(), generated_samples.cpu().numpy(), metric='euclidean')
+        src, dist = np.ones(len(data_set)) / len(data_set), np.ones(len(generated_samples)) / len(generated_samples)
+        G = pot.emd(src, dist, distance_matrix)
+        w2_dist = np.sum(G * distance_matrix) / G.sum()
+        w2_dist = torch.tensor(w2_dist, device=data_set.device)
+        self.log(
+            f"{prefix}/data_w2",
+            self.val_energy_w2(w2_dist),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+    
+    def _log_dist_w2(self, prefix="val"):
+        if prefix == "test":
+            data_set = self.energy_function.sample_val_set(self.eval_batch_size)
+            generated_samples = self.generate_samples(
+                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+            )
+        else:
+            if self.last_samples is None:
+                return
+            if len(self.last_samples) < self.eval_batch_size:
+                return
+            data_set = self.energy_function.sample_test_set(self.eval_batch_size)
+            generated_samples, generated_energies = self.last_samples, self.last_energies
+
+        dist_w2 = pot.emd2_1d(
+            self.energy_function.interatomic_dist(generated_samples).cpu().numpy().reshape(-1),
+            self.energy_function.interatomic_dist(data_set).cpu().numpy().reshape(-1),
+        )
+        self.log(
+            f"{prefix}/dist_w2",
+            self.val_dist_w2(dist_w2),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+    
+    def _log_dist_total_var(self, prefix="val"):
+        if prefix == "test":
+            data_set = self.energy_function.sample_val_set(self.eval_batch_size)
+            generated_samples = self.generate_samples(
+                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+            )
+        else:
+            if self.last_samples is None:
+                return
+            if len(self.last_samples) < self.eval_batch_size:
+                return
+            data_set = self.energy_function.sample_test_set(self.eval_batch_size)
+            generated_samples, generated_energies = self.last_samples, self.last_energies
+ 
+
+        generated_samples_dists = (
+            self.energy_function.interatomic_dist(generated_samples).cpu().numpy().reshape(-1),
+        )
+        data_set_dists = self.energy_function.interatomic_dist(data_set).cpu().numpy().reshape(-1)
+
+        H_data_set, x_data_set = np.histogram(data_set_dists, bins=200)
+        H_generated_samples, _ = np.histogram(generated_samples_dists, bins=(x_data_set))
+        total_var = (
+            0.5
+            * np.abs(
+                H_data_set / H_data_set.sum() - H_generated_samples / H_generated_samples.sum()
+            ).sum()
+        )
+
+        self.log(
+            f"{prefix}/dist_total_var",
+            self.val_dist_total_var(total_var),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+    
+    def _log_data_total_var(self, prefix="val"):
+        if prefix == "test":
+            data_set = self.energy_function.sample_val_set(self.eval_batch_size)
+            generated_samples = self.generate_samples(
+                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+            )
+        else:
+            if self.last_samples is None:
+                return
+            if len(self.last_samples) < self.eval_batch_size:
+                return
+            data_set = self.energy_function.sample_test_set(self.eval_batch_size)
+            generated_samples, generated_energies = self.last_samples, self.last_energies
+        
+        bins = (200, ) * self.energy_function.dimensionality
+        generated_samples = self.energy_function.unnormalize(generated_samples)
+        all_data = torch.cat([data_set, generated_samples], dim=0)
+        min_vals, _ = all_data.min(dim=0)
+        max_vals, _ = all_data.max(dim=0)
+        ranges = tuple((min_vals[i].item(), max_vals[i].item()) for i in range(self.energy_function.dimensionality))  # tuple of (min, max) for each dimension
+        ranges = tuple(item for subtuple in ranges for item in subtuple)
+        hist_p, _ = torch.histogramdd(data_set.cpu(), bins=bins, range=ranges)
+        hist_q, _ = torch.histogramdd(generated_samples.cpu(), bins=bins, range=ranges)
+        
+        p_dist = hist_p / hist_p.sum()
+        q_dist = hist_q / hist_q.sum()
+        
+        total_var = 0.5 * torch.abs(p_dist - q_dist).sum()
+        self.log(
+            f"{prefix}/data_total_var",
+            self.val_dist_total_var(total_var),
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        
+
+    
     def setup(self, stage: str) -> None:
         """Lightning hook that is called at the beginning of fit (train + validate), validate,
         test, or predict.
@@ -792,20 +717,12 @@ class PISLitModule(LightningModule):
             device=self.device, scale=self.pis_scale * np.sqrt(self.time_range)
         )
         self.net = self.net.to(self.device)
+        self.tcond = self.tcond.to(self.device)
         self.pis_sde = SDE(self.drift, self.diffusion).to(self.device)
-        init_states = self.generate_samples(
-            self.pis_sde, self.num_init_samples, diffusion_scale=self.diffusion_scale
-        )
-        init_energies = self.energy_function(init_states)
 
-        self.buffer.add(init_states, init_energies)
 
         if self.hparams.compile and stage == "fit":
             self.net = torch.compile(self.net)
-            self.cfm_net = torch.compile(self.cfm_net)
-
-        if self.nll_with_cfm:
-            self.cfm_prior = self.partial_prior(device=self.device, scale=self.cfm_prior_std)
 
     def configure_optimizers(self) -> Dict[str, Any]:
         """Choose what optimizers and learning-rate schedulers to use in your optimization.

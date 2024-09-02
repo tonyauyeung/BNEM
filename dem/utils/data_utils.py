@@ -108,7 +108,7 @@ def calculate_rmsd(pos: Tensor, ref: Tensor) -> Tensor:
     return rmsd
 
 # vmap requires pytorch >= 2.0
-def calculate_rmsd_matrix(R: Tensor, R_ref: Tensor) -> Tensor:
+def calculate_rmsd_matrix(R_ref: Tensor, R: Tensor) -> Tensor:
     fn_vmap_row = torch.vmap(calculate_rmsd, in_dims=(0, None))
     fn_vmap_row_col = torch.vmap(fn_vmap_row, in_dims=(None, 0))
     return fn_vmap_row_col(R, R_ref)

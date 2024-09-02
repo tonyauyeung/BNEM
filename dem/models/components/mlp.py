@@ -319,6 +319,8 @@ class MyMLP(nn.Module):
         self.joint_mlp = nn.Sequential(*layers)
 
     def forward(self, t, x, x_self_cond=False):
+        if len(t.shape) == 0:
+            t = torch.ones(x.shape[0]).to(x.device) * t
         positional_embs = [
             self.get_submodule(f"input_mlp{i}")(x[:, i]) for i in range(x.shape[-1])
         ]

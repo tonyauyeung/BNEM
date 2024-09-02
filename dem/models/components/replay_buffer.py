@@ -9,7 +9,7 @@ class AISData(NamedTuple):
     x: torch.Tensor
     log_w: torch.Tensor
     add_count: torch.Tensor
-    q: torch.Tensor
+    log_q: torch.Tensor
 
 
 class ReplayBuffer:
@@ -63,16 +63,6 @@ class ReplayBuffer:
         self.can_sample = False  # whether the buffer is full enough to begin sampling
         self.temperature = temperature
         self.with_q = with_q
-
-        while self.can_sample is False:
-            # fill buffer up minimum length
-            if with_q:
-                x, log_w, log_q = initial_sampler()
-                self.add(x, log_w, log_q)
-            else:
-                x, log_w = initial_sampler()
-                self.add(x, log_w)
-            self.current_add_count = 0  # reset add count back to zero
         self.current_add_count = 1
 
     @torch.no_grad()
@@ -101,8 +91,8 @@ class ReplayBuffer:
         else:
             assert num_to_get < self.current_index
 
-        start_idx = self.current_idx - num_to_get
-        idxs = [torch.arange(max(start_idx, 0), self.current_idx)]
+        start_idx = self.current_index - num_to_get
+        idxs = [torch.arange(max(start_idx, 0), self.current_index)]
         if start_idx < 0:
             idxs.append(torch.arange(self.max_length + start_idx, self.max_length))
 
@@ -119,10 +109,10 @@ class ReplayBuffer:
         if not self.can_sample:
             raise Exception("Buffer must be at minimum length before calling sample")
         max_index = self.max_length if self.is_full else self.current_index
-        rank = self.current_add_count - self.buffer.add_count[:max_index]
-        probs = torch.pow(1 / rank, self.temperature)
+        log_probs = torch.pow(self.buffer.log_w, self.temperature)
+        probs = torch.exp(torch.clamp(log_probs, max=20))
         indices = torch.multinomial(probs, num_samples=batch_size, replacement=False).to(
-            self.device
+        self.device
         )  # sample uniformly
         if self.with_q:
             return self.buffer.x[indices], self.buffer.log_w[indices], self.buffer.log_q[indices], indices
@@ -145,6 +135,9 @@ class ReplayBuffer:
         else:
             dataset = [(x, log_w) for x, log_w in zip(x_batches, log_w_batches)]
         return dataset
+    
+    def __len__(self):
+        return len(self.buffer.x)
 
 
 if __name__ == "__main__":

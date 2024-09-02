@@ -18,7 +18,6 @@ logger:
 defaults:
   - override /energy: dw4
   - override /model/net: egnn
-  - override /model/noise_schedule: power
 
 optimizer:
   lr: 1e-3
@@ -31,21 +30,13 @@ model:
     n_dimension: 2
 
   noise_schedule:
-    _target_: dem.models.components.noise_schedules.PowerNoiseSchedule
-    #sigma_min: 0.001
-    #sigma_max: 3
-    beta: 3
-    power: 6
+    sigma_max: 3
 
   partial_prior:
     _target_: dem.energies.base_prior.MeanFreePrior
     _partial_: true
     n_particles: 4
     spatial_dim: 2
-
-  lambda_weighter:
-    _target_: dem.models.components.lambda_weighter.NoLambdaWeighter
-    _partial_: true
 
   clipper:
     _target_: dem.models.components.clipper.Clipper
@@ -54,15 +45,5 @@ model:
     max_score_norm: 20
     min_log_reward: null
 
-  #prioritize_warmup: 10000
-  diffusion_scale: 1
-  num_samples_to_generate_per_epoch: 1000
-
-  init_from_prior: true
 
   eval_batch_size: 1000
-
-  num_estimator_mc_samples: 1000
-
-  nll_integration_method: dopri5
-  cfm_prior_std: 2.

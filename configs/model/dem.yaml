@@ -16,8 +16,15 @@ scheduler:
 defaults:
   - net:
       - mlp
-  - noise_schedule:
-      - geometric
+
+lambda_weighter:
+    _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
+    _partial_: true
+    epsilon: 1e-3
+
+noise_schedule:
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
+    sigma_min: 0.0001
 
 buffer:
   _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
@@ -90,3 +97,8 @@ nll_with_cfm: false
 # train cfm only on train ata and not dem
 debug_use_train_data: false
 logz_with_cfm: false
+
+diffusion_scale: 1.0
+
+num_estimator_mc_samples: 500
+num_samples_to_generate_per_epoch: 1000

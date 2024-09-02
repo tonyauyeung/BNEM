@@ -19,8 +19,8 @@ class BaseNoiseSchedule(ABC):
 
 
 class LinearNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, beta):
-        self.beta = beta
+    def __init__(self, sigma_max):
+        self.beta = sigma_max
 
     def g(self, t):
         return torch.full_like(t, self.beta**0.5)
@@ -32,12 +32,14 @@ class LinearNoiseSchedule(BaseNoiseSchedule):
         return h / self.beta
     
     def a(self, t, dt):
-        return 1 - torch.exp(-2 * self.beta**0.5 * dt)
+        t = torch.clamp(t, min=dt)
+        a = 1 - math.exp(-2 * self.beta**0.5 * dt)
+        return torch.zeros_like(t) + a
 
 
 class QuadraticNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, beta):
-        self.beta = beta
+    def __init__(self, sigma_max):
+        self.beta = sigma_max
 
     def g(self, t):
         return torch.sqrt(self.beta * 2 * t)
@@ -49,12 +51,13 @@ class QuadraticNoiseSchedule(BaseNoiseSchedule):
         return (h / self.beta + 1e-5).sqrt()
     
     def a(self, t, dt):
-        return 1 - torch.exp(-2 * (2 * self.beta) ** 0.5) * (2 / 3) * (t ** 1.5 - ( t - dt) ** 1.5)
+        t = torch.clamp(t, min=dt)
+        return 1 - torch.exp(-2 * (2 * self.beta) ** 0.5 * (2 / 3) * (t ** 1.5 - (t - dt) ** 1.5))
 
 
 class PowerNoiseSchedule(BaseNoiseSchedule):
-    def __init__(self, beta, power):
-        self.beta = beta
+    def __init__(self, sigma_max, power):
+        self.beta = sigma_max
         self.power = power
 
     def g(self, t):
@@ -67,7 +70,9 @@ class PowerNoiseSchedule(BaseNoiseSchedule):
         return h / self.beta ** (1 / self.power)
     
     def a(self, t, dt):
-        return 1 - torch.exp(-2 * (self.beta / self.power) ** 0.5 * (t ** self.power - (t - dt) ** self.power))
+        t = torch.clamp(t, min=dt)
+        p_tild = (self.power - 1) / 2 + 1
+        return 1 - torch.exp(-2 * (self.beta / self.power) ** 0.5 / p_tild * (t ** p_tild - (t - dt) ** p_tild))
 
 
 class GeometricNoiseSchedule(BaseNoiseSchedule):
@@ -92,4 +97,13 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
         return 0.5 * torch.log((h**0.5 / self.sigma_min) ** 2 + 1) / math.log(self.sigma_diff)
     
     def a(self, t, dt):
-        return 1 - torch.exp(-2 * self.sigma_min * ((2 * np.log(self.sigma_diff)) ** 0.5) * ( 1 / math.log(self.sigma_diff)) * (torch.pow(torch.full_like(t, self.sigma_diff, t)) - torch.pow(torch.full_like(t, self.sigma_diff, t - dt))))
+        t = torch.clamp(t, min=dt)
+        return 1 - torch.exp(-2 * self.sigma_min * ((2 * np.log(self.sigma_diff)) ** 0.5) * ( 1 / math.log(self.sigma_diff)) * (torch.pow(torch.full_like(t, self.sigma_diff), t) - torch.pow(torch.full_like(t, self.sigma_diff), t - dt)))
+    
+class DDSNoiseSchedule(): #Discrete Cosine noise schedule
+    def __init__(self, sigma_max, sigma_min=0.008):
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        
+    def a(self, t, dt):
+        return self.sigma_min * torch.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)).pow(4)

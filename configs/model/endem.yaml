@@ -16,8 +16,15 @@ scheduler:
 defaults:
   - net:
       - mlp
-  - noise_schedule:
-      - geometric
+
+lambda_weighter:
+    _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
+    _partial_: true
+    epsilon: 1e-3
+
+noise_schedule:
+    _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
+
 
 buffer:
   _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
@@ -34,7 +41,7 @@ clipper_gen:
   _target_: dem.models.components.clipper.Clipper
   should_clip_scores: True
   should_clip_log_rewards: False
-  max_score_norm: 100000
+  max_score_norm: 100
   min_log_reward: null
 
 score_scaler: null
@@ -45,7 +52,7 @@ num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
 
-num_integration_steps: 1000
+num_integration_steps: 100
 nll_integration_method: dopri5
 tol: 1e-5
 
@@ -93,8 +100,14 @@ num_negative_time_steps: 100
 ais_steps: 0
 ais_dt: 0.1
 
+diffusion_scale: 1.0
+
+num_estimator_mc_samples: 500
+num_samples_to_generate_per_epoch: 1000
+
 #turn on the below 3 config for eval mode
 nll_with_cfm: false
 # train cfm only on train data and not dem
 debug_use_train_data: false
 logz_with_cfm: false
+
