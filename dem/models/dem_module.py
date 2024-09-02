@@ -22,7 +22,7 @@ from dem.utils.data_utils import remove_mean, calculate_rmsd_matrix
 from dem.utils.logging_utils import fig_to_image
 
 from .components.clipper import Clipper
-from .components.cnf import CNF
+from .components.ffjord import FFJORD
 from .components.distribution_distances import compute_distribution_distances
 from .components.ema import EMAWrapper
 from .components.ema import EMA
@@ -193,7 +193,8 @@ class DEMLitModule(LightningModule):
 
             self.net = self.score_scaler.wrap_model_for_unscaling(self.net)
             self.cfm_net = self.score_scaler.wrap_model_for_unscaling(self.cfm_net)
-
+        
+        '''
         self.dem_cnf = CNF(
             self.net,
             is_diffusion=True,
@@ -212,6 +213,18 @@ class DEMLitModule(LightningModule):
             num_steps=num_integration_steps,
             atol=tol,
             rtol=tol,
+        )
+        '''
+        self.dem_cnf = FFJORD(
+            self.net,
+            trace_method='exact' if use_exact_likelihood else 'hutch',
+            num_steps=num_integration_steps
+        )
+        
+        self.cfm_cnf = FFJORD(
+            self.cfm_net,
+            trace_method='exact' if use_exact_likelihood else 'hutch',
+            num_steps=num_integration_steps
         )
 
         self.ais_steps = ais_steps
@@ -566,6 +579,7 @@ class DEMLitModule(LightningModule):
         prior,
         samples: torch.Tensor,
     ):
+        '''
         aug_samples = torch.cat(
             [samples, torch.zeros(samples.shape[0], 1, device=samples.device)], dim=-1
         )
@@ -577,6 +591,10 @@ class DEMLitModule(LightningModule):
         log_p_0 = log_p_1 + logdetjac
         nll = -log_p_0
         return nll, x_1, logdetjac, log_p_1
+        '''
+        z, delta_logp, reg_term = cnf.forward(samples)
+        nll = - (prior.log_prob(z) + delta_logp.view(-1))
+        return nll, z
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
@@ -763,7 +781,7 @@ class DEMLitModule(LightningModule):
         
 
     def compute_log_z(self, cnf, prior, samples, prefix, name):
-        nll, _, _, _ = self.compute_nll(cnf, prior, samples)
+        nll, _ = self.compute_nll(cnf, prior, samples)
         # energy function will unnormalize the samples itself
         logz = self.energy_function(samples) + nll
         logz_metric = getattr(self, f"{prefix}_{name}logz")
@@ -777,7 +795,7 @@ class DEMLitModule(LightningModule):
         )
     
     def compute_ess(self, cnf, prior, samples, prefix, name):
-        nll, _, _, _ = self.compute_nll(cnf, prior, samples)
+        nll, z = self.compute_nll(cnf, prior, samples)
         likelihood = torch.exp(-nll)
         energies = self.energy_function(samples)
 
@@ -794,21 +812,16 @@ class DEMLitModule(LightningModule):
 
     def compute_and_log_nll(self, cnf, prior, samples, prefix, name):
         cnf.nfe = 0.0
-        nll, forwards_samples, logdetjac, log_p_1 = self.compute_nll(cnf, prior, samples)
+        nll, forwards_samples = self.compute_nll(cnf, prior, samples)
         nfe_metric = getattr(self, f"{prefix}_{name}nfe")
         nll_metric = getattr(self, f"{prefix}_{name}nll")
-        logdetjac_metric = getattr(self, f"{prefix}_{name}nll_logdetjac")
-        log_p_1_metric = getattr(self, f"{prefix}_{name}nll_log_p_1")
-        nfe_metric.update(cnf.nfe)
+
+
         nll_metric.update(nll)
-        logdetjac_metric.update(logdetjac)
-        log_p_1_metric.update(log_p_1)
 
         self.log_dict(
             {
                 f"{prefix}/{name}_nfe": nfe_metric,
-                f"{prefix}/{name}nll_logdetjac": logdetjac_metric,
-                f"{prefix}/{name}nll_log_p_1": log_p_1_metric,
                 # f"{prefix}/{name}logz": logz_metric,
             },
             on_epoch=True,
@@ -944,9 +957,11 @@ class DEMLitModule(LightningModule):
                 prioritize=self.prioritize_cfm_training_samples,
             )
 
-            cfm_samples = self.cfm_cnf.generate(
-                self.cfm_prior.sample(self.eval_batch_size),
-            )[-1]
+            #cfm_samples = self.cfm_cnf.generate(
+            #    self.cfm_prior.sample(self.#eval_batch_size),
+            #)[-1]
+            with torch.no_grad():
+                cfm_samples =  self.cfm_cnf.reverse_fn(self.cfm_prior.sample(self.eval_batch_size))[-1]
             cfm_samples = self.energy_function.unnormalize(cfm_samples)
 
             self.energy_function.log_on_epoch_end(

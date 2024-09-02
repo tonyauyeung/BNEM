@@ -25,7 +25,7 @@ class FFJORD(torch.nn.Module):
     def __init__(self, dynamics, 
                  trace_method='hutch', ode_regularization=0, 
                  hutch_noise='gaussian',
-                 num_steps=10):
+                 num_steps=100):
         super(FFJORD, self).__init__()
 
         self.odefunc = ODEfunc(
@@ -65,7 +65,7 @@ class FFJORD(torch.nn.Module):
         return 'rk4' if self.training else 'dopri5'
             
 
-    def forward(self, x, node_mask=None, edge_mask=None, context=None):
+    def forward(self, x):# node_mask=None, edge_mask=None, context=None
         ldj = x.new_zeros(x.shape[0])
         reg_term = x.new_zeros(x.shape[0])
 
@@ -78,12 +78,14 @@ class FFJORD(torch.nn.Module):
         #     node_mask, edge_mask, context)
 
         # Wrap forward, do not unwrap until backward call!!!
+        '''
         if node_mask is not None or edge_mask is not None or context is not None:
             self.odefunc.dynamics.forward = self.odefunc.dynamics.wrap_forward(
                 node_mask, edge_mask, context)
+        '''
 
         if self.method == 'rk4':
-            int_time = time = torch.linspace(
+            int_time = torch.linspace(
                 self.int_time[0], self.int_time[-1], 
                 self.num_steps, device=x.device
             )
@@ -99,30 +101,32 @@ class FFJORD(torch.nn.Module):
         z, ldj, reg_term = zt[-1], ldjt[-1], reg_termt[-1]
         return z, ldj, reg_term
 
-    def reverse_fn(self, z, node_mask=None, edge_mask=None, context=None):
+    def reverse_fn(self, z):#, node_mask=None, edge_mask=None, context=None
         self.odefunc.before_odeint(z)
+        '''
         if node_mask is not None or edge_mask is not None or context is not None:
             self.odefunc.dynamics.forward = self.odefunc.dynamics.wrap_forward(
                 node_mask, edge_mask, context)
-
+        '''
         with torch.no_grad():
             xt = odeint(self.odefunc.dynamics, z, self.inv_int_time,
                         method=self.method,
                         rtol=self.rtol,
                         atol=self.atol)
-
+        '''
         if node_mask is not None or edge_mask is not None or context is not None:
             self.odefunc.dynamics.forward = self.odefunc.dynamics.unwrap_forward()
+        '''
         return xt
 
-    def reverse(self, z, node_mask=None, edge_mask=None, context=None):
-        xt = self.reverse_fn(z, node_mask, edge_mask, context)
+    def reverse(self, z):#, node_mask=None, edge_mask=None, context=None
+        xt = self.reverse_fn(z)#, node_mask, edge_mask, context
         x = xt[-1]
         return x
 
-    def reverse_chain(self, z, node_mask, edge_mask, context=None):
+    def reverse_chain(self, z):#, node_mask, edge_mask, context=None
         self.set_integration_time(times=list(np.linspace(0, 1, 50)))
-        xt = self.reverse_fn(z, node_mask, edge_mask, context)
+        xt = self.reverse_fn(z)#, node_mask, edge_mask, context
         self.set_integration_time(times=[0.0, 1.0])
         return xt
 
