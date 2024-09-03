@@ -116,6 +116,7 @@ class DDSLitModule(LightningModule):
         energy_function: BaseEnergyFunction,
         noise_schedule: BaseNoiseSchedule,
         num_samples_to_generate_per_epoch: int,
+        num_samples_to_save: int,
         eval_batch_size: int,
         num_integration_steps: int,
         lr_scheduler_update_frequency: int,
@@ -162,7 +163,8 @@ class DDSLitModule(LightningModule):
         self.num_samples_to_generate_per_epoch = num_samples_to_generate_per_epoch
         self.eval_batch_size = eval_batch_size
         self.num_integration_steps = num_integration_steps
-
+        self.num_samples_to_save = num_samples_to_save
+        
         self.last_samples = None
         self.last_energies = None
 

@@ -116,6 +116,7 @@ class PISLitModule(LightningModule):
         eval_batch_size: int,
         num_integration_steps: int,
         lr_scheduler_update_frequency: int,
+        num_samples_to_save: int,
         compile: bool,
         clipper: Optional[Clipper] = None,
         partial_prior=None,
@@ -160,6 +161,7 @@ class PISLitModule(LightningModule):
 
         self.partial_prior = partial_prior
         self.clipper_gen = clipper_gen
+        self.num_samples_to_save = num_samples_to_save
 
         self.outputs = {}
 

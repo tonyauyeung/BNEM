@@ -50,3 +50,5 @@ use_ema: false
 
 dds_scale: 1.
 time_range: 1.
+
+num_samples_to_save: 100000
