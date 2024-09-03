@@ -174,6 +174,7 @@ class PISLitModule(LightningModule):
         self.val_ddata_total_var = MeanMetric()
         self.val_dist_w2 = MeanMetric()
         self.val_data_w2 = MeanMetric()
+        self.test_gfn_elbo = MeanMetric()
 
     def score(self, x):
         with torch.no_grad():
@@ -606,7 +607,7 @@ class PISLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
-                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+                num_samples=self.eval_batch_size, pis_scale=self.pis_scale
             )
         else:
             if self.last_samples is None:
@@ -632,7 +633,7 @@ class PISLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
-                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+                num_samples=self.eval_batch_size, pis_scale=self.pis_scale
             )
         else:
             if self.last_samples is None:
@@ -669,7 +670,8 @@ class PISLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
-                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+                self.pis_sde, 
+                num_samples=self.eval_batch_size, pis_scale=self.pis_scale
             )
         else:
             if self.last_samples is None:

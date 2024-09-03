@@ -521,6 +521,7 @@ class DDSLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
+                self.dds_sde,
                 num_samples=self.eval_batch_size, diffusion_scale=self.diffusion_scale
             )
         else:

@@ -38,7 +38,7 @@ noise_schedule:
 num_samples_to_generate_per_epoch: 1024
 eval_batch_size: 1024
 
-num_integration_steps: 1000
+num_integration_steps: 100
 
 lr_scheduler_update_frequency: ${trainer.check_val_every_n_epoch}
 

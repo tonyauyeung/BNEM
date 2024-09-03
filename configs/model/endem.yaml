@@ -102,8 +102,6 @@ ais_dt: 0.1
 
 diffusion_scale: 1.0
 
-num_estimator_mc_samples: 500
-num_samples_to_generate_per_epoch: 1000
 
 #turn on the below 3 config for eval mode
 nll_with_cfm: false

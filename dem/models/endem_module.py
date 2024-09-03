@@ -80,7 +80,7 @@ class ENDEMLitModule(DEMLitModule):
         t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
-        bootstrap_mc_samples: int = 400,
+        bootstrap_mc_samples: int = 50,
         epsilon_train=1e-4,
         prioritize_warmup=0,
         iden_t=False,

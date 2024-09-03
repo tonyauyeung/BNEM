@@ -100,5 +100,3 @@ logz_with_cfm: false
 
 diffusion_scale: 1.0
 
-num_estimator_mc_samples: 500
-num_samples_to_generate_per_epoch: 1000

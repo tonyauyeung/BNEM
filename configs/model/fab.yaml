@@ -36,7 +36,7 @@ num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
 
-num_integration_steps: 250
+num_integration_steps: 25
 
 lr_scheduler_update_frequency: ${trainer.check_val_every_n_epoch}
 

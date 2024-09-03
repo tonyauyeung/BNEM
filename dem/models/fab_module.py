@@ -507,7 +507,8 @@ class FABLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
-                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+                self.fab_cnf,
+                num_samples=self.eval_batch_size
             )
         else:
             if self.last_samples is None:
@@ -533,7 +534,8 @@ class FABLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
-                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+                self.fab_cnf,
+                num_samples=self.eval_batch_size
             )
         else:
             if self.last_samples is None:
@@ -570,7 +572,8 @@ class FABLitModule(LightningModule):
         if prefix == "test":
             data_set = self.energy_function.sample_val_set(self.eval_batch_size)
             generated_samples = self.generate_samples(
-                num_samples=self.eval_batch_size, pis_scale=self.diffusion_scale
+                self.fab_cnf,
+                num_samples=self.eval_batch_size
             )
         else:
             if self.last_samples is None:
