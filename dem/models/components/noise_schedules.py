@@ -126,4 +126,4 @@ class DDSNoiseSchedule(): #Discrete Cosine noise schedule
         self.sigma_max = sigma_max
         
     def a(self, t, dt):
-        return self.sigma_max * dt * torch.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)).pow(4)
+        return dt * torch.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)).pow(4)
