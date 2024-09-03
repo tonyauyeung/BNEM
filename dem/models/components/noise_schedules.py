@@ -99,6 +99,26 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
     def a(self, t, dt):
         t = torch.clamp(t, min=dt)
         return 1 - torch.exp(-2 * self.sigma_min * ((2 * np.log(self.sigma_diff)) ** 0.5) * ( 1 / math.log(self.sigma_diff)) * (torch.pow(torch.full_like(t, self.sigma_diff), t) - torch.pow(torch.full_like(t, self.sigma_diff), t - dt)))
+
+class CosineNoiseSchedule(BaseNoiseSchedule):
+    def __init__(self, sigma_max, sigma_min=0.008):
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        
+        
+    def g(self, t):
+        tmp = np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)
+        if not isinstance(t, torch.Tensor):
+            return math.sqrt(2 * np.pi / (1 + self.sigma_min) * math.sin(tmp) * math.cos(tmp)**3)
+        else:
+            return torch.sqrt(2 * np.pi / (1 + self.sigma_min) * torch.sin(tmp) * torch.cos(tmp).pow(3))
+
+    def h(self, t):
+        if not isinstance(t, torch.Tensor):
+            return self.sigma_max * math.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min))**4
+    
+        else:
+            return self.sigma_max * torch.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)).pow(4)
     
 class DDSNoiseSchedule(): #Discrete Cosine noise schedule
     def __init__(self, sigma_max, sigma_min=0.008):
@@ -106,4 +126,4 @@ class DDSNoiseSchedule(): #Discrete Cosine noise schedule
         self.sigma_max = sigma_max
         
     def a(self, t, dt):
-        return self.sigma_min * torch.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)).pow(4)
+        return self.sigma_max * dt * torch.cos(np.pi / 2 * (1 - t + self.sigma_min) / (1 + self.sigma_min)).pow(4)

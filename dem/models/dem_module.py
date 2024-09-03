@@ -636,6 +636,7 @@ class DEMLitModule(LightningModule):
                 num_samples=self.eval_batch_size, diffusion_scale=self.diffusion_scale
             )
             generated_energies = self.energy_function(generated_samples)
+            generated_samples = generated_samples[generated_energies > -100]
         else:
             if len(self.buffer) < self.eval_batch_size:
                 return

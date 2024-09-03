@@ -1,6 +1,10 @@
+import os
 import math
+import time
 from typing import Any, Dict, Optional, Tuple
 
+import hydra
+from hydra.utils import get_original_cwd
 import matplotlib.pyplot as plt
 import numpy as np
 import ot as pot
@@ -528,6 +532,8 @@ class PISLitModule(LightningModule):
         self.eval_epoch_end("val")
 
     def on_test_epoch_end(self) -> None:
+        wandb_logger = get_wandb_logger(self.loggers)
+        
         self.eval_epoch_end("test")
         self._log_energy_w2(prefix="test")
         self._log_data_w2(prefix="test")
@@ -536,6 +542,39 @@ class PISLitModule(LightningModule):
             self._log_dist_w2(prefix="test")
         else:
             self._log_data_total_var(prefix="test")
+        
+        batch_size = 1000
+        final_samples = []
+        n_batches = self.num_samples_to_save // batch_size
+        print("Generating samples")
+        for i in range(n_batches):
+            start = time.time()
+            samples = self.generate_samples(
+                self.pis_sde,
+                pis_scale=self.pis_scale,
+                num_samples=batch_size
+            )
+            final_samples.append(samples)
+            end = time.time()
+            print(f"batch {i} took {end - start:0.2f}s")
+
+            if i == 0:
+                self.energy_function.log_on_epoch_end(
+                    samples,
+                    self.energy_function(samples),
+                    wandb_logger,
+                )
+
+        final_samples = torch.cat(final_samples, dim=0)
+        output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+        path = f"{output_dir}/samples_{self.num_samples_to_save}.pt"
+        torch.save(final_samples, path)
+        print(f"Saving samples to {path}")
+
+        os.makedirs(self.energy_function.name, exist_ok=True)
+        path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
+        torch.save(final_samples, path2)
+        print(f"Saving samples to {path2}")
 
     def _log_energy_w2(self, prefix="val"):
         if prefix == "test":
@@ -546,6 +585,7 @@ class PISLitModule(LightningModule):
                 pis_scale=self.pis_scale
             )
             generated_energies = self.energy_function(generated_samples)
+            generated_samples = generated_samples[generated_energies > -100]
         else:
             if self.last_samples is None:
                 return

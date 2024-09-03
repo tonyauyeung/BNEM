@@ -23,7 +23,7 @@ lambda_weighter:
     epsilon: 1e-3
 
 noise_schedule:
-    _target_: dem.models.components.noise_schedules.QuadraticNoiseSchedule
+    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
 
 
 buffer:
@@ -41,7 +41,7 @@ clipper_gen:
   _target_: dem.models.components.clipper.Clipper
   should_clip_scores: True
   should_clip_log_rewards: False
-  max_score_norm: 100
+  max_score_norm: 50
   min_log_reward: null
 
 score_scaler: null
