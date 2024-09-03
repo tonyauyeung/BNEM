@@ -57,7 +57,7 @@ compute_nll_on_train_data: false
 
 cfm_sigma: 0.0
 cfm_prior_std: ${energy.data_normalization_factor}
-use_otcfm: false
+use_otcfm: true
 prioritize_cfm_training_samples: false
 
 lr_scheduler_update_frequency: ${trainer.check_val_every_n_epoch}
@@ -93,10 +93,10 @@ ais_dt: 0.1
 
 
 #turn on the below 3 config for eval mode
-nll_with_cfm: false
+nll_with_cfm: true
 # train cfm only on train ata and not dem
-debug_use_train_data: false
-logz_with_cfm: false
+debug_use_train_data: true
+logz_with_cfm: true
 
 diffusion_scale: 1.0
 

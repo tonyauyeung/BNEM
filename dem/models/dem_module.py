@@ -224,7 +224,7 @@ class DEMLitModule(LightningModule):
         self.cfm_cnf = FFJORD(
             self.cfm_net,
             trace_method='exact' if use_exact_likelihood else 'hutch',
-            num_steps=num_integration_steps
+            num_steps=num_integration_steps*10
         )
 
         self.ais_steps = ais_steps
