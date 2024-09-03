@@ -22,6 +22,7 @@ from dem.utils.data_utils import remove_mean, calculate_rmsd_matrix
 from dem.utils.logging_utils import fig_to_image
 
 from .components.clipper import Clipper
+from .components.cnf import CNF
 from .components.ffjord import FFJORD
 from .components.distribution_distances import compute_distribution_distances
 from .components.ema import EMAWrapper
@@ -194,7 +195,7 @@ class DEMLitModule(LightningModule):
             self.net = self.score_scaler.wrap_model_for_unscaling(self.net)
             self.cfm_net = self.score_scaler.wrap_model_for_unscaling(self.cfm_net)
         
-        '''
+        
         self.dem_cnf = CNF(
             self.net,
             is_diffusion=True,
@@ -224,8 +225,9 @@ class DEMLitModule(LightningModule):
         self.cfm_cnf = FFJORD(
             self.cfm_net,
             trace_method='exact' if use_exact_likelihood else 'hutch',
-            num_steps=num_integration_steps*10
+            num_steps=num_integration_steps
         )
+        '''
 
         self.ais_steps = ais_steps
         self.ais_dt = ais_dt
@@ -579,22 +581,23 @@ class DEMLitModule(LightningModule):
         prior,
         samples: torch.Tensor,
     ):
-        '''
+        
         aug_samples = torch.cat(
             [samples, torch.zeros(samples.shape[0], 1, device=samples.device)], dim=-1
         )
         aug_output = cnf.integrate(aug_samples)[-1]
         x_1, logdetjac = aug_output[..., :-1], aug_output[..., -1]
-        if not cnf.is_diffusion:
-            logdetjac = -logdetjac
+        #if not cnf.is_diffusion:
+        #    logdetjac = -logdetjac
         log_p_1 = prior.log_prob(x_1)
         log_p_0 = log_p_1 + logdetjac
         nll = -log_p_0
-        return nll, x_1, logdetjac, log_p_1
+        return nll, x_1#, logdetjac, log_p_1
         '''
         z, delta_logp, reg_term = cnf.forward(samples)
         nll = - (prior.log_prob(z) + delta_logp.view(-1))
         return nll, z
+        '''
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
@@ -958,11 +961,11 @@ class DEMLitModule(LightningModule):
                 prioritize=self.prioritize_cfm_training_samples,
             )
 
-            #cfm_samples = self.cfm_cnf.generate(
-            #    self.cfm_prior.sample(self.#eval_batch_size),
-            #)[-1]
-            with torch.no_grad():
-                cfm_samples =  self.cfm_cnf.reverse_fn(self.cfm_prior.sample(self.eval_batch_size))[-1]
+            cfm_samples = self.cfm_cnf.generate(
+                self.cfm_prior.sample(self.eval_batch_size),
+            )[-1]
+            #with torch.no_grad():
+            #    cfm_samples =  self.cfm_cnf.reverse_fn#(self.cfm_prior.sample(self.eval_batch_size))[-1]
             cfm_samples = self.energy_function.unnormalize(cfm_samples)
 
             self.energy_function.log_on_epoch_end(
