@@ -47,7 +47,7 @@ clipper_gen:
 score_scaler: null
 
 num_init_samples: 1024
-num_estimator_mc_samples: 1000
+num_estimator_mc_samples: 100
 num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
