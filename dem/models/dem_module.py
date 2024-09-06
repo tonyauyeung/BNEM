@@ -527,7 +527,8 @@ class DEMLitModule(LightningModule):
             self.net.update_ema()
             if self.should_train_cfm(batch_idx):
                 self.cfm_net.update_ema()
-
+    
+    @torch.no_grad()
     def generate_samples(
         self,
         reverse_sde: VEReverseSDE = None,
@@ -539,7 +540,7 @@ class DEMLitModule(LightningModule):
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
         samples = self.prior.sample(num_samples)
-        self.EMA.step_ema(self.ema_model, self.net)
+        #self.EMA.step_ema(self.ema_model, self.net)
         return self.integrate(
             reverse_sde=reverse_sde,
             samples=samples,
@@ -575,6 +576,7 @@ class DEMLitModule(LightningModule):
         
         return trajectory[-1]
 
+    @torch.no_grad()
     def compute_nll(
         self,
         cnf,
@@ -587,8 +589,8 @@ class DEMLitModule(LightningModule):
         )
         aug_output = cnf.integrate(aug_samples)[-1]
         x_1, logdetjac = aug_output[..., :-1], aug_output[..., -1]
-        #if not cnf.is_diffusion:
-        #    logdetjac = -logdetjac
+        if not cnf.is_diffusion:
+            logdetjac = -logdetjac
         log_p_1 = prior.log_prob(x_1)
         log_p_0 = log_p_1 + logdetjac
         nll = -log_p_0
@@ -601,6 +603,7 @@ class DEMLitModule(LightningModule):
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
+        self.EMA.step_ema(self.ema_model, self.net)
         if self.clipper_gen is not None:
             reverse_sde = VEReverseSDE(
                 self.clipper_gen.wrap_grad_fxn(self.ema_model), 

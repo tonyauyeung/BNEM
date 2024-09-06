@@ -16,5 +16,5 @@ data_normalization_factor: 1.0
 
 is_molecule: true
 
-#data_path_train: "/home/bq216/codes/beidem/dem_results/logs/train/runs/2024-08-05_03-44-05/samples_100000.pt"
+#data_path_train: "/home/bq216/codes/beidem/dem_results/logs/train/runs/2024-09-04_13-30-45/samples_100000.pt"
 #data_path_val: ${energy.data_path_train}

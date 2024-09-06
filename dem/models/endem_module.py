@@ -77,13 +77,14 @@ class ENDEMLitModule(DEMLitModule):
         ais_steps: int = 0,
         ais_dt: float = 0.1,
         ais_warmup: int = 100,
+        ema_beta=0.99,
         t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
-        bootstrap_mc_samples: int = 80,
+        bootstrap_mc_samples: int = 8,
         epsilon_train=1e-4,
         prioritize_warmup=0,
-        iden_t=False,
+        iden_t=True,
         mh_iter=0,
         num_efficient_samples=0,
     ) -> None:
@@ -127,6 +128,7 @@ class ENDEMLitModule(DEMLitModule):
                 diffusion_scale=diffusion_scale,
                 cfm_loss_weight=cfm_loss_weight,
                 use_ema=use_ema,
+                ema_beta=ema_beta,
                 use_exact_likelihood=use_exact_likelihood,
                 debug_use_train_data=debug_use_train_data,
                 init_from_prior=init_from_prior,
@@ -336,8 +338,8 @@ class ENDEMLitModule(DEMLitModule):
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
         
-        energy_error_norm = (predicted_energy - energy_est).pow(2)
-        error_norms_t0 = (energy_clean - predicted_energy_clean).pow(2)
+        energy_error_norm = torch.abs(predicted_energy - energy_est).pow(2)
+        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
 
         
         
@@ -367,8 +369,8 @@ class ENDEMLitModule(DEMLitModule):
             
         self.iter_num += 1
         
-        if self.iter_num == self.prioritize_warmup:
-            self.buffer.prioritize = False
+        #if self.iter_num == self.prioritize_warmup:
+        #    self.buffer.prioritize = False
         
         self.log(
             "largest energy",
@@ -387,7 +389,7 @@ class ENDEMLitModule(DEMLitModule):
         )
         
         full_loss = (self.t0_regulizer_weight * error_norms_t0 + energy_error_norm)
-        
+
         if should_bootstrap:
             full_loss += u_loss
         
@@ -422,6 +424,7 @@ class ENDEMLitModule(DEMLitModule):
     
     
     def on_train_epoch_end(self) -> None:
+        self.EMA.step_ema(self.ema_model, self.net)
         "Lightning hook that is called when a training epoch ends."
         if self.reverse_sde.mh_sample is not None:
             if self.clipper_gen is not None:

@@ -40,7 +40,7 @@ buffer:
 score_scaler: null
 
 num_init_samples: 1024
-num_estimator_mc_samples: 100
+num_estimator_mc_samples: 10000
 num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
@@ -93,10 +93,10 @@ ais_dt: 0.1
 
 
 #turn on the below 3 config for eval mode
-nll_with_cfm: true
+nll_with_cfm: false
 # train cfm only on train ata and not dem
-debug_use_train_data: true
-logz_with_cfm: true
+debug_use_train_data: false
+logz_with_cfm: false
 
 diffusion_scale: 1.0
 

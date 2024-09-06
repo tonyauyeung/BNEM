@@ -52,8 +52,8 @@ class LennardJonesPotential(Energy):
         oscillator_scale=1.0,
         two_event_dims=True,
         energy_factor=1.0,
-        range_min=0.65,
-        range_max=2,
+        range_min=0.5,
+        range_max=1.,
         interpolation=1000,
     ):
         """Energy for a Lennard-Jones cluster.
@@ -108,9 +108,11 @@ class LennardJonesPotential(Energy):
                                 c=torch.tensor(coeffs).float())
 
     def _energy(self, x, smooth_=False):
-        batch_shape = x.shape[: -len(self.event_shape)]
-        if batch_shape[0] == 0:
+        if len(x.shape) == len(self.event_shape):
+            x = x.unsqueeze(0)
+        if x.shape[0] == 0:
             return torch.zeros([0, 1]).to(x.device)
+        batch_shape = x.shape[: -len(self.event_shape)]
         x = x.view(*batch_shape, self._n_particles, self.n_spatial_dim)
 
         dists = distances_from_vectors(
@@ -126,7 +128,6 @@ class LennardJonesPotential(Energy):
         if self.oscillator:
             osc_energies = 0.5 * self._remove_mean(x).pow(2).sum(dim=(-2, -1)).view(*batch_shape)
             lj_energies = lj_energies + osc_energies * self._oscillator_scale
-
         return lj_energies[:, None]
 
     def _remove_mean(self, x):
