@@ -30,6 +30,8 @@ noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
     sigma_min: 0.001
 
+bootstrap_from_checkpoint: True
+
 ema_beta: 0.95
 
 buffer:

@@ -217,7 +217,7 @@ class DDSLitModule(LightningModule):
         )
         
         prior_ll = self.prior.log_prob(x_1) 
-        sample_ll = self.energy_function(x_1)
+        sample_ll = self.energy_function(x_1).sum(-1)
         term_loss = prior_ll - sample_ll
         dds_loss = (term_loss + r_k_reg).mean()
 
@@ -309,7 +309,7 @@ class DDSLitModule(LightningModule):
         self.last_samples = self.generate_samples(
             self.dds_sde, diffusion_scale=self.diffusion_scale
         )
-        self.last_energies = self.energy_function(self.last_samples)
+        self.last_energies = self.energy_function(self.last_samples).sum(-1)
         
         prefix = 'val'
         self._log_energy_w2(prefix=prefix)
@@ -415,7 +415,7 @@ class DDSLitModule(LightningModule):
             if i == 0:
                 self.energy_function.log_on_epoch_end(
                     samples,
-                    self.energy_function(samples),
+                    self.energy_function(samples).sum(-1),
                     wandb_logger,
                 )
 
@@ -438,7 +438,7 @@ class DDSLitModule(LightningModule):
                 num_samples=self.eval_batch_size, 
                 diffusion_scale=self.diffusion_scale
             )
-            generated_energies = self.energy_function(generated_samples)
+            generated_energies = self.energy_function(generated_samples).sum(-1)
             generated_samples = generated_samples[generated_energies > -100]
         else:
             if self.last_samples is None:
@@ -447,7 +447,7 @@ class DDSLitModule(LightningModule):
                 return
             data_set = self.energy_function.sample_test_set(self.eval_batch_size)
             generated_samples, generated_energies = self.last_samples, self.last_energies
-        energies = self.energy_function(self.energy_function.normalize(data_set))
+        energies = self.energy_function(self.energy_function.normalize(data_set)).sum(-1)
         energy_w2 = pot.emd2_1d(energies.cpu().numpy(), generated_energies.cpu().numpy())#is there something wrong here? weird large number
 
         self.log(

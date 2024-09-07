@@ -34,7 +34,7 @@ def log_expectation_reward(
 
     samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt())
 
-    log_rewards = energy_function(samples)
+    log_rewards = energy_function(samples).sum(-1)
 
     if clipper is not None and clipper.should_clip_log_rewards:
         log_rewards = clipper.clip_log_rewards(log_rewards)

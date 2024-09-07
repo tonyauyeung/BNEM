@@ -28,7 +28,8 @@ class EnergyNet(nn.Module):
     def forward_e(self, t, y):
         score = self.score_net(t, y)
         if not self.energy_function.is_molecule:
-            return - torch.linalg.vector_norm(score, dim=-1) + score.sum(-1) + self.c
+            energy = - torch.linalg.vector_norm(score, dim=-1) + score.sum(-1) + self.c
+            return energy.unsqueeze(-1)
         else:
             score, potential = score
             score = score.view(score.shape[0], 

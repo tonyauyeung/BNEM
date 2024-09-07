@@ -23,8 +23,8 @@ lambda_weighter:
     epsilon: 1e-3
 
 noise_schedule:
-    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.0001
+    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
+    #sigma_min: 0.0001
 
 buffer:
   _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
@@ -40,12 +40,12 @@ buffer:
 score_scaler: null
 
 num_init_samples: 1024
-num_estimator_mc_samples: 10000
+num_estimator_mc_samples: 1000
 num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
 
-num_integration_steps: 100
+num_integration_steps: 1000
 nll_integration_method: dopri5
 tol: 1e-5
 
@@ -88,7 +88,7 @@ num_samples_to_save: 100000
 negative_time: false
 num_negative_time_steps: 100
 
-ais_steps: 10
+ais_steps: 0
 ais_dt: 0.1
 
 

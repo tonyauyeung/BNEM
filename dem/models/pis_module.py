@@ -301,7 +301,7 @@ class PISLitModule(LightningModule):
         )[-1]
         x_1, quad_reg = aug_output[..., :-1], aug_output[..., -1]
         prior_ll = self.prior.log_prob(x_1).mean() / (self.dim + 1)
-        sample_ll = self.energy_function(x_1).mean() / (self.dim + 1)
+        sample_ll = self.energy_function(x_1).sum(-1).mean() / (self.dim + 1)
         term_loss = prior_ll - sample_ll
         quad_reg = (quad_reg).mean() / (self.dim + 1)
         pis_loss = term_loss + quad_reg
@@ -394,7 +394,7 @@ class PISLitModule(LightningModule):
             state[:, -1]
             + uw_term
             + self.prior.log_prob(state[:, :-1])
-            - self.energy_function(state[:, :-1])
+            - self.energy_function(state[:, :-1]).sum(-1)
         )
 
         log_weight = -loss + loss.mean()
@@ -412,7 +412,7 @@ class PISLitModule(LightningModule):
 
     def gfn_log_Z(self):
         state, log_pf, log_pb = self.fwd_traj()
-        log_r = self.energy_function(state)
+        log_r = self.energy_function(state).sum(-1)
         log_weight = log_r - log_pf + log_pb
         log_Z = logmeanexp(log_weight)
         log_Z_lb = log_weight.mean()
@@ -447,7 +447,7 @@ class PISLitModule(LightningModule):
         self.last_samples = self.generate_samples(
             self.pis_sde, pis_scale=self.pis_scale
         )
-        self.last_energies = self.energy_function(self.last_samples)
+        self.last_energies = self.energy_function(self.last_samples).sum(-1)
         
         prefix = 'val'
         self._log_energy_w2(prefix=prefix)
@@ -563,7 +563,7 @@ class PISLitModule(LightningModule):
             if i == 0:
                 self.energy_function.log_on_epoch_end(
                     samples,
-                    self.energy_function(samples),
+                    self.energy_function(samples).sum(-1),
                     wandb_logger,
                 )
 
@@ -586,7 +586,7 @@ class PISLitModule(LightningModule):
                 num_samples=self.eval_batch_size, 
                 pis_scale=self.pis_scale
             )
-            generated_energies = self.energy_function(generated_samples)
+            generated_energies = self.energy_function(generated_samples).sum(-1)
             generated_samples = generated_samples[generated_energies > -100]
         else:
             if self.last_samples is None:
@@ -595,7 +595,7 @@ class PISLitModule(LightningModule):
                 return
             data_set = self.energy_function.sample_test_set(self.eval_batch_size)
             generated_samples, generated_energies = self.last_samples, self.last_energies
-        energies = self.energy_function(self.energy_function.normalize(data_set))
+        energies = self.energy_function(self.energy_function.normalize(data_set)).sum(-1)
         energy_w2 = pot.emd2_1d(energies.cpu().numpy(), generated_energies.cpu().numpy())#is there something wrong here? weird large number
 
         self.log(

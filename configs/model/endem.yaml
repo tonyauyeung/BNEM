@@ -24,7 +24,7 @@ lambda_weighter:
 
 noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.001
+    sigma_min: 0.01
 
 ema_beta: 0.95
 
@@ -43,18 +43,18 @@ clipper_gen:
   _target_: dem.models.components.clipper.Clipper
   should_clip_scores: True
   should_clip_log_rewards: False
-  max_score_norm: 70
+  max_score_norm: 50
   min_log_reward: null
 
 score_scaler: null
 
 num_init_samples: 1024
-num_estimator_mc_samples: 100
+num_estimator_mc_samples: 1000
 num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
 
-num_integration_steps: 100
+num_integration_steps: 1000
 nll_integration_method: dopri5
 tol: 1e-5
 

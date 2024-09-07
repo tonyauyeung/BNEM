@@ -130,7 +130,8 @@ class BaseEnergyFunction(ABC):
         if len(samples.shape) > 2:
             org_shape = samples.shape
             samples = samples.reshape(-1, self.dimensionality)
-        grad_fxn = torch.func.grad(self.__call__)
+        
+        grad_fxn = torch.func.grad(lambda x: self(x).sum())
         vmapped_grad = torch.vmap(grad_fxn)
         if org_shape is not None:
             return vmapped_grad(samples).reshape(org_shape)

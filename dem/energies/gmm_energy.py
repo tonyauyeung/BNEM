@@ -97,7 +97,7 @@ class GMM(BaseEnergyFunction):
     def __call__(self, samples: torch.Tensor, smooth=None) -> torch.Tensor:
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
-        return self.gmm.log_prob(samples)
+        return self.gmm.log_prob(samples).unsqueeze(-1)
 
     @property
     def dimensionality(self):

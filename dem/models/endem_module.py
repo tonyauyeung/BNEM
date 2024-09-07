@@ -87,6 +87,7 @@ class ENDEMLitModule(DEMLitModule):
         iden_t=True,
         mh_iter=0,
         num_efficient_samples=0,
+        bootstrap_from_checkpoint=True,
     ) -> None:
             
             net = partial(EnergyNet, net=net, 
@@ -161,6 +162,8 @@ class ENDEMLitModule(DEMLitModule):
             if use_ema:
                 self.net = EMAWrapper(self.net)
             self.net.score_clipper = clipper_gen
+            
+            self.bootstrap_from_checkpoint = bootstrap_from_checkpoint
             
     def forward(self, t: torch.Tensor, x: torch.Tensor, with_grad=False) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -273,7 +276,9 @@ class ENDEMLitModule(DEMLitModule):
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
         
-        should_bootstrap = (self.bootstrap_scheduler is not None and train and self.train_stage == 1)
+        bootstrap_stage = 1 if self.bootstrap_from_checkpoint else 0
+        
+        should_bootstrap = (self.bootstrap_scheduler is not None and train and self.train_stage == bootstrap_stage)
         if should_bootstrap:
             self.iden_t = True
             with torch.no_grad():

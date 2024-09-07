@@ -155,7 +155,8 @@ class DEMLitModule(LightningModule):
         ema_beta=0.95,
         ema_steps=0,
         iden_t=False,
-        sample_noise=False
+        sample_noise=False,
+        clean_for_w2=True,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -341,6 +342,7 @@ class DEMLitModule(LightningModule):
         self.init_from_prior = init_from_prior
         self.iden_t = iden_t
         self.sample_noise = sample_noise
+        self.clean_for_w2 = clean_for_w2
         
         self.iter_num = 0
 
@@ -641,8 +643,9 @@ class DEMLitModule(LightningModule):
             generated_samples = self.generate_samples(
                 num_samples=self.eval_batch_size, diffusion_scale=self.diffusion_scale
             )
-            generated_energies = self.energy_function(generated_samples).sum(-1)
-            generated_samples = generated_samples[generated_energies > -100]
+            if self.clean_for_w2:
+                generated_energies = self.energy_function(generated_samples).sum(-1)
+                generated_samples = generated_samples[generated_energies > -100]
         else:
             if len(self.buffer) < self.eval_batch_size:
                 return
@@ -665,6 +668,9 @@ class DEMLitModule(LightningModule):
             generated_samples = self.generate_samples(
                 num_samples=self.eval_batch_size, diffusion_scale=self.diffusion_scale
             )
+            if self.clean_for_w2:
+                generated_energies = self.energy_function(generated_samples).sum(-1)
+                generated_samples = generated_samples[generated_energies > -100]
 
         else:
             if len(self.buffer) < self.eval_batch_size:
