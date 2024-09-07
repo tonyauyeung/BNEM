@@ -52,8 +52,8 @@ class LennardJonesPotential(Energy):
         oscillator_scale=1.0,
         two_event_dims=True,
         energy_factor=1.0,
-        range_min=0.5,
-        range_max=1.,
+        range_min=0.65,
+        range_max=2.,
         interpolation=1000,
     ):
         """Energy for a Lennard-Jones cluster.
@@ -123,12 +123,13 @@ class LennardJonesPotential(Energy):
         
         if smooth_:
             lj_energies[dists < self.range_min] = self.splines(dists[dists < self.range_min]).squeeze(-1)
-        lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
+        #lj_energies = lj_energies.view(*batch_shape, -1).sum(dim=-1) * self._energy_factor
+        lj_energies = lj_energies.view(*batch_shape, self._n_particles, -1).sum(dim=-1) * self._energy_factor
 
         if self.oscillator:
-            osc_energies = 0.5 * self._remove_mean(x).pow(2).sum(dim=(-2, -1)).view(*batch_shape)
+            osc_energies = 0.5 * self._remove_mean(x).pow(2).sum(dim=( -1)).view(*batch_shape, self._n_particles)
             lj_energies = lj_energies + osc_energies * self._oscillator_scale
-        return lj_energies[:, None]
+        return lj_energies#[:, None]
 
     def _remove_mean(self, x):
         x = x.view(-1, self._n_particles, self.n_spatial_dim)
@@ -206,9 +207,9 @@ class LennardJonesEnergy(BaseEnergyFunction):
             samples = samples.view(-1, samples.shape[-1])
             energy = self.lennard_jones._log_prob(samples, smooth=smooth).squeeze(-1)
             
-            return energy.view(*samples_shape)
+            return energy.view(*samples_shape, self.n_particles)
         else:
-            return self.lennard_jones._log_prob(samples, smooth=smooth).squeeze(-1).squeeze(-1)
+            return self.lennard_jones._log_prob(samples, smooth=smooth).squeeze(-1)#.squeeze(-1)
     
     
     def setup_test_set(self):
@@ -322,8 +323,8 @@ class LennardJonesEnergy(BaseEnergyFunction):
         axs[0].set_xlabel("Interatomic distance")
         axs[0].legend(["generated data", "test data"])
 
-        energy_samples = -self(samples).detach().detach().cpu()
-        energy_test = -self(test_data_smaller).detach().detach().cpu()
+        energy_samples = -self(samples).detach().detach().cpu().sum(-1)
+        energy_test = -self(test_data_smaller).detach().detach().cpu().sum(-1)
 
         # min_energy = min(energy_test.min(), energy_samples.min()).item()
         # max_energy = max(energy_test.max(), energy_samples.max()).item()

@@ -81,7 +81,7 @@ class ENDEMLitModule(DEMLitModule):
         t0_regulizer_weight=0.1,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
-        bootstrap_mc_samples: int = 8,
+        bootstrap_mc_samples: int = 80,
         epsilon_train=1e-4,
         prioritize_warmup=0,
         iden_t=True,
@@ -219,7 +219,7 @@ class ENDEMLitModule(DEMLitModule):
         u = u.tile(num_samples)
         xu = xu.flatten(0, 1)
         with torch.no_grad():
-            teacher_out = teacher_net.forward_e(u, xu).reshape(-1, num_samples)
+            teacher_out = teacher_net.forward_e(u, xu).reshape(-1, num_samples, self.energy_function.n_particles)
         if reduction:    
             log_sum_exp = torch.logsumexp(teacher_out, dim=1) - torch.log(torch.tensor(num_samples, device=self.device))
             return log_sum_exp
@@ -278,7 +278,7 @@ class ENDEMLitModule(DEMLitModule):
             self.iden_t = True
             with torch.no_grad():
                 t_loss = (self.sum_energy_estimator(energy_est, self.num_estimator_mc_samples) \
-                          - predicted_energy).pow(2) * self.lambda_weighter(times)
+                          - predicted_energy).pow(2).sum(-1) * self.lambda_weighter(times)
                 
                 i = self.bootstrap_scheduler.t_to_index(times.cpu())
                 u = self.bootstrap_scheduler.sample_t(i - 1)
@@ -290,7 +290,7 @@ class ENDEMLitModule(DEMLitModule):
                                                      self.num_estimator_mc_samples, 
                                                      reduction=True)
                 u_predicted_energy = self.net.forward_e(u, u_samples)
-                u_loss = (u_energy_est - u_predicted_energy).pow(2) / self.lambda_weighter(u)
+                u_loss = (u_energy_est - u_predicted_energy).pow(2).sum(-1) / self.lambda_weighter(u)
             
             bootstrap_index = torch.where(t_loss * (self.bootstrap_mc_samples -1) / self.bootstrap_mc_samples\
                                          > u_loss)[0]
@@ -337,9 +337,8 @@ class ENDEMLitModule(DEMLitModule):
 
         predicted_energy_clean = self.net.forward_e(torch.zeros_like(times), 
                                                     clean_samples)
-        
         energy_error_norm = torch.abs(predicted_energy - energy_est).pow(2)
-        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean)
+        error_norms_t0 = torch.abs(energy_clean - predicted_energy_clean).pow(2)
 
         
         
@@ -388,8 +387,7 @@ class ENDEMLitModule(DEMLitModule):
                 prog_bar=False,
         )
         
-        full_loss = (self.t0_regulizer_weight * error_norms_t0 + energy_error_norm)
-
+        full_loss = (self.t0_regulizer_weight * error_norms_t0 + energy_error_norm).sum(-1)
         if should_bootstrap:
             full_loss += u_loss
         
@@ -461,7 +459,7 @@ class ENDEMLitModule(DEMLitModule):
         )
         self.last_energies = self.energy_function(self.last_samples)
                 
-        self.buffer.add(self.last_samples, self.last_energies)
+        self.buffer.add(self.last_samples, self.last_energies.sum(-1))
         prefix = "val"
 
         

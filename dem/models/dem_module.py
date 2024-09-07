@@ -621,7 +621,7 @@ class DEMLitModule(LightningModule):
                 reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
             )
             self.last_energies = self.energy_function(self.last_samples)
-        self.buffer.add(self.last_samples, self.last_energies)
+        self.buffer.add(self.last_samples, self.last_energies.sum(-1))
         prefix = "val"
 
         
@@ -641,14 +641,14 @@ class DEMLitModule(LightningModule):
             generated_samples = self.generate_samples(
                 num_samples=self.eval_batch_size, diffusion_scale=self.diffusion_scale
             )
-            generated_energies = self.energy_function(generated_samples)
+            generated_energies = self.energy_function(generated_samples).sum(-1)
             generated_samples = generated_samples[generated_energies > -100]
         else:
             if len(self.buffer) < self.eval_batch_size:
                 return
             data_set = self.energy_function.sample_test_set(self.eval_batch_size)
             generated_samples, generated_energies = self.buffer.get_last_n_inserted(self.eval_batch_size)
-        energies = self.energy_function(self.energy_function.normalize(data_set))
+        energies = self.energy_function(self.energy_function.normalize(data_set)).sum(-1)
         energy_w2 = pot.emd2_1d(energies.cpu().numpy(), generated_energies.cpu().numpy())#is there something wrong here? weird large number
 
         self.log(
@@ -1098,7 +1098,7 @@ class DEMLitModule(LightningModule):
                 get_wandb_logger(self.loggers)
             )
         
-        self.buffer.add(init_states, init_energies)
+        self.buffer.add(init_states, init_energies.sum(-1))
 
         if self.hparams.compile and stage == "fit":
             self.net = torch.compile(self.net)

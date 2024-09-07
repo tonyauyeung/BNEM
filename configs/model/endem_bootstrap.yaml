@@ -28,9 +28,9 @@ lambda_weighter:
 
 noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.01
+    sigma_min: 0.001
 
-ema_beta: 0.99
+ema_beta: 0.95
 
 buffer:
   _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
@@ -47,7 +47,7 @@ clipper_gen:
   _target_: dem.models.components.clipper.Clipper
   should_clip_scores: True
   should_clip_log_rewards: False
-  max_score_norm: 50
+  max_score_norm: 70
   min_log_reward: null
 
 score_scaler: null

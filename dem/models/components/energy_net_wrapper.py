@@ -36,14 +36,14 @@ class EnergyNet(nn.Module):
                                self.energy_function.n_spatial_dim)
             potential = potential.view(score.shape[0], 
                                self.energy_function.n_particles, -1)
-            return - torch.linalg.vector_norm(score, dim=-1).sum(-1) + potential.sum(-1).sum(-1)
+            return - torch.linalg.vector_norm(score, dim=-1) + potential.sum(-1)
     
     def forward(self, t: torch.Tensor, x: torch.Tensor, 
                 with_grad=False, return_E=False) -> torch.Tensor:
         """obtain score prediction of f_\theta(x, t) w.r.t. x"""
         x.requires_grad_(True)
         torch.set_grad_enabled(True)
-        neg_energy = self.forward_e(t, x)
+        neg_energy = self.forward_e(t, x).sum(-1)
         score_x = torch.autograd.grad(neg_energy.sum(), x, create_graph=True, retain_graph=True)[0]
         
         if self.score_clipper is not None:
