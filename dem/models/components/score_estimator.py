@@ -55,3 +55,31 @@ def estimate_grad_Rt(
     grad_fxn = torch.func.grad(log_expectation_reward, argnums=1)
     vmapped_fxn = torch.vmap(grad_fxn, in_dims=(0, 0, None, None, None), randomness="different")
     return vmapped_fxn(t, x, energy_function, noise_schedule, num_mc_samples)
+
+def estimate_score_tweedie(
+    t: torch.Tensor,
+    x: torch.Tensor,
+    energy_function: BaseEnergyFunction,
+    noise_schedule: BaseNoiseSchedule,
+    num_mc_samples: int,
+    tempeture = 1.
+):
+    if t.ndim == 0:
+        t = t.unsqueeze(0).repeat(len(x))
+
+    repeated_t = t.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)
+    repeated_x = x.unsqueeze(0).repeat_interleave(num_mc_samples, dim=0)
+
+    # Check shape of h_t
+    h_t = noise_schedule.h(repeated_t).unsqueeze(-1)
+
+    samples = repeated_x + (torch.randn_like(repeated_x) * h_t.sqrt())
+    
+    data_shape = list(x.shape)[1:]
+    
+
+    neg_energies = energy_function(samples)
+    weights = torch.nn.functional.softmax(neg_energies / tempeture, dim=0).reshape(num_mc_samples, x.shape[0], *([1] * len(data_shape)))
+    denoised_x = torch.sum(weights * samples, dim=0)
+    scores = (denoised_x - x) / noise_schedule.h(t).unsqueeze(1)
+    return scores

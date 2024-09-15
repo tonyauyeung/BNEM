@@ -32,7 +32,7 @@ from .components.mlp import TimeConder
 from .components.noise_schedules import BaseNoiseSchedule
 from .components.prioritised_replay_buffer import PrioritisedReplayBuffer
 from .components.scaling_wrapper import ScalingWrapper
-from .components.score_estimator import estimate_grad_Rt, wrap_for_richardsons
+from .components.score_estimator import estimate_grad_Rt, wrap_for_richardsons, estimate_score_tweedie
 from .components.score_scaler import BaseScoreScaler
 from .components.sde_integration import integrate_sde
 from .components.sdes import VEReverseSDE
@@ -157,6 +157,7 @@ class DEMLitModule(LightningModule):
         iden_t=False,
         sample_noise=False,
         clean_for_w2=True,
+        use_tweedie=False,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -259,10 +260,16 @@ class DEMLitModule(LightningModule):
             self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, self.energy_function)
         else:
             self.reverse_sde = VEReverseSDE(self.cfm_net, self.noise_schedule)
-            
-        grad_fxn = estimate_grad_Rt
-        if use_richardsons:
-            grad_fxn = wrap_for_richardsons(grad_fxn)
+        
+        self.use_tweedie = use_tweedie
+        if not self.use_tweedie:
+            grad_fxn = estimate_grad_Rt
+            if use_richardsons:
+                grad_fxn = wrap_for_richardsons(grad_fxn)
+        else:
+            grad_fxn = estimate_score_tweedie
+            if use_richardsons:
+                grad_fxn = wrap_for_richardsons(grad_fxn)
 
         self.clipper = clipper
         self.clipped_grad_fxn = self.clipper.wrap_grad_fxn(grad_fxn)
@@ -393,13 +400,22 @@ class DEMLitModule(LightningModule):
             self.iter_num += 1
         #clean samples is a placeholder for training on t=0 as regularizer
         if self.ais_steps == 0 or self.iter_num > self.ais_warmup:
-            estimated_score = estimate_grad_Rt(
-                times,
-                samples,
-                self.energy_function,
-                self.noise_schedule,
-                num_mc_samples=self.num_estimator_mc_samples,
-            )
+            if not self.use_tweedie:
+                estimated_score = estimate_grad_Rt(
+                    times,
+                    samples,
+                    self.energy_function,
+                    self.noise_schedule,
+                    num_mc_samples=self.num_estimator_mc_samples,
+                )
+            else:
+                estimated_score = estimate_score_tweedie(
+                    times,
+                    samples,
+                    self.energy_function,
+                    self.noise_schedule,
+                    num_mc_samples=self.num_estimator_mc_samples,
+                )
         else:
             estimated_score = ais(
                 samples,
