@@ -425,10 +425,19 @@ class ENDEMLitModule(DEMLitModule):
         
         return trajectory[-1]
     
-    
+    def on_train_epoch_start(self):
+        self.train_start_time = time.time()
+
     def on_train_epoch_end(self) -> None:
         self.EMA.step_ema(self.ema_model, self.net)
         "Lightning hook that is called when a training epoch ends."
+        self.log(
+            "val/training_time",
+            time.time() - self.train_start_time,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
         if self.reverse_sde.mh_sample is not None:
             if self.clipper_gen is not None:
                 self.ema_model.score_clipper = self.clipper_gen
@@ -458,9 +467,16 @@ class ENDEMLitModule(DEMLitModule):
                     self.ema_model, self.noise_schedule, self.energy_function,
                     num_efficient_samples = self.num_efficient_samples
                 )
-                
+        sample_start_time = time.time()
         self.last_samples = self.generate_samples(
             reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
+        )
+        self.log(
+            "val/sampling_time",
+            time.time() - sample_start_time,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
         )
         self.last_energies = self.energy_function(self.last_samples)
                 
@@ -474,7 +490,7 @@ class ENDEMLitModule(DEMLitModule):
         if self.energy_function.is_molecule:
             self._log_dist_w2(prefix=prefix)
             self._log_dist_total_var(prefix=prefix)
-        else:
+        elif self.energy_function.dimensionality <= 2:
             self._log_data_total_var(prefix=prefix)
 
 

@@ -37,6 +37,7 @@ from .components.score_scaler import BaseScoreScaler
 from .components.sde_integration import integrate_sde
 from .components.sdes import VEReverseSDE
 from .components.ais import ais
+from .components.kde import log_unnormalize_kde
 
 
 def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
@@ -618,27 +619,40 @@ class DEMLitModule(LightningModule):
         nll = - (prior.log_prob(z) + delta_logp.view(-1))
         return nll, z
         '''
+    def on_train_epoch_start(self):
+        self.train_start_time = time.time()
 
     def on_train_epoch_end(self) -> None:
         "Lightning hook that is called when a training epoch ends."
         self.EMA.step_ema(self.ema_model, self.net)
+        self.log(
+            "val/training_time",
+            time.time() - self.train_start_time,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
         if self.clipper_gen is not None:
             reverse_sde = VEReverseSDE(
                 self.clipper_gen.wrap_grad_fxn(self.ema_model), 
                 self.noise_schedule, self.energy_function
             )
-            self.last_samples = self.generate_samples(
-                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
-            )
-            self.last_energies = self.energy_function(self.last_samples)
         else:
             reverse_sde = VEReverseSDE(
                 self.ema_model, self.noise_schedule, self.energy_function
             )
-            self.last_samples = self.generate_samples(
-                reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
-            )
-            self.last_energies = self.energy_function(self.last_samples)
+        sample_start_time = time.time()
+        self.last_samples = self.generate_samples(
+            reverse_sde=reverse_sde, diffusion_scale=self.diffusion_scale
+        )
+        self.log(
+            "val/sampling_time",
+            time.time() - sample_start_time,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=False,
+        )
+        self.last_energies = self.energy_function(self.last_samples)
         self.buffer.add(self.last_samples, self.last_energies.sum(-1))
         prefix = "val"
 
@@ -649,8 +663,8 @@ class DEMLitModule(LightningModule):
         if self.energy_function.is_molecule:
             self._log_dist_w2(prefix=prefix)
             self._log_dist_total_var(prefix=prefix)
-        else:
-            self._log_data_total_var(prefix=prefix)
+        elif self.energy_function.dimensionality <= 2:
+            self._log_data_total_var(prefix=prefix)            
             
 
     def _log_energy_w2(self, prefix="val"):
