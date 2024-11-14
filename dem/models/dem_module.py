@@ -37,7 +37,6 @@ from .components.score_scaler import BaseScoreScaler
 from .components.sde_integration import integrate_sde
 from .components.sdes import VEReverseSDE
 from .components.ais import ais
-from .components.kde import log_unnormalize_kde
 
 
 def t_stratified_loss(batch_t, batch_loss, num_bins=5, loss_name=None):
