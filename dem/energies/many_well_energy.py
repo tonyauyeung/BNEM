@@ -7,8 +7,8 @@ import torch
 from hydra.utils import get_original_cwd
 from lightning.pytorch.loggers import WandbLogger
 
-from cool.energies.base_energy_function import BaseEnergyFunction
-from cool.utils.logging_utils import fig_to_image
+from dem.energies.base_energy_function import BaseEnergyFunction
+from dem.utils.logging_utils import fig_to_image
 
 from fab.target_distributions import many_well
 from fab.utils.plotting import plot_contours, plot_marginal_pair
@@ -42,7 +42,7 @@ class ManyWellEnergy(BaseEnergyFunction):
             b=-6.0, 
             c=1.
         )
-
+        self.n_particles = 1
         self.curr_epoch = 0
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
         self.plot_samples_epoch_period = plot_samples_epoch_period
@@ -159,10 +159,11 @@ class ManyWellEnergy(BaseEnergyFunction):
                 plot_contours(self.many_well_energy.log_prob_2D, bounds=plotting_bounds, ax=axs[i, 1])
 
                 # plot flow samples
-                plot_marginal_pair(samples, ax=axs[i, 0], bounds=plotting_bounds,
-                                marginal_dims=(i * 2, i * 2 + 1))
-                plot_marginal_pair(true_samples, ax=axs[i, 1], bounds=plotting_bounds,
-                                marginal_dims=(i * 2, i * 2 + 1))
+                if samples:
+                    plot_marginal_pair(samples, ax=axs[i, 0], bounds=plotting_bounds,
+                                    marginal_dims=(i * 2, i * 2 + 1))
+                    plot_marginal_pair(true_samples, ax=axs[i, 1], bounds=plotting_bounds,
+                                    marginal_dims=(i * 2, i * 2 + 1))
                 axs[i, 0].set_xlabel(f"dim {i * 2}")
                 axs[i, 0].set_ylabel(f"dim {i * 2 + 1}")
 
@@ -177,10 +178,11 @@ class ManyWellEnergy(BaseEnergyFunction):
             plot_contours(log_prob_target, bounds=plotting_bounds, ax=axs[1])
 
             # plot flow samples
-            plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds,
-                            marginal_dims=(0, 2))
-            plot_marginal_pair(true_samples, ax=axs[1], bounds=plotting_bounds,
-                            marginal_dims=(0, 2))
+            if samples is not None:
+                plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds,
+                                marginal_dims=(0, 2))
+                plot_marginal_pair(true_samples, ax=axs[1], bounds=plotting_bounds,
+                                marginal_dims=(0, 2))
             axs[0].set_xlabel(f"dim 1")
             axs[0].set_ylabel(f"dim 3")
 
