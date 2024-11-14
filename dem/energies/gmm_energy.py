@@ -42,7 +42,7 @@ class GMM(BaseEnergyFunction):
             use_gpu=use_gpu,
             true_expectation_estimation_n_samples=true_expectation_estimation_n_samples,
         )
-
+        self.n_particles = 1
         self.curr_epoch = 0
         self.device = device
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
