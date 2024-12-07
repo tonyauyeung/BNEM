@@ -78,7 +78,7 @@ class ENDEMLitModule(DEMLitModule):
         ais_dt: float = 0.1,
         ais_warmup: int = 100,
         ema_beta=0.99,
-        t0_regulizer_weight=0.1,
+        t0_regulizer_weight=0.,
         bootstrap_schedule: BootstrapSchedule = None,
         bootstrap_warmup: int = 2e3,
         bootstrap_mc_samples: int = 80,
