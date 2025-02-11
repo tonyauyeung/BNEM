@@ -51,6 +51,7 @@ class ManyWellEnergy(BaseEnergyFunction):
         self.data_normalization_factor = data_normalization_factor
 
         self.device = device
+        self.name = "manywell"
 
         self.val_set_size = 1000
         self.test_set_size = 1000
@@ -83,6 +84,7 @@ class ManyWellEnergy(BaseEnergyFunction):
         cfm_samples=None,
         replay_buffer=None,
         prefix: str = "",
+        epoch=None
     ) -> None:
         if wandb_logger is None:
             return

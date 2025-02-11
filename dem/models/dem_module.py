@@ -2,6 +2,7 @@ import time
 import copy
 import math
 from typing import Any, Dict, Optional
+import os
 
 import hydra
 import matplotlib.pyplot as plt
@@ -172,13 +173,19 @@ class DEMLitModule(LightningModule):
 
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
-        self.save_hyperparameters(logger=False)
+
+        # Disable hyperparams saving for aldp
+        if energy_function.name == 'aldp':
+            self.save_hyperparameters(logger=False, ignore=["energy_function"])
+        else:
+            self.save_hyperparameters(logger=False)
 
         self.net = net(energy_function=energy_function)
         self.cfm_net = net(energy_function=energy_function)
 
         self.EMA = EMA(beta=ema_beta, step_start_ema=ema_steps)
-        self.ema_model = copy.deepcopy(self.net).eval().requires_grad_(False)
+        # self.ema_model = copy.deepcopy(self.net).eval().requires_grad_(False)
+        self.ema_model = net(energy_function=energy_function).eval().requires_grad_(False)  # change for aldp
         
         if use_ema:
             self.net = EMAWrapper(self.net)
@@ -664,7 +671,7 @@ class DEMLitModule(LightningModule):
             self._log_dist_total_var(prefix=prefix)
         elif self.energy_function.dimensionality <= 2:
             self._log_data_total_var(prefix=prefix)            
-            
+        torch.save(self.last_samples, os.path.join("traj_data/idem_mw32", f"samples_{self.iter_num}.pt"))
 
     def _log_energy_w2(self, prefix="val"):
         if prefix == "test":
@@ -1005,7 +1012,6 @@ class DEMLitModule(LightningModule):
             #with torch.no_grad():
             #    cfm_samples =  self.cfm_cnf.reverse_fn#(self.cfm_prior.sample(self.eval_batch_size))[-1]
             cfm_samples = self.energy_function.unnormalize(cfm_samples)
-
             self.energy_function.log_on_epoch_end(
                 self.last_samples,
                 self.last_energies,
@@ -1013,6 +1019,7 @@ class DEMLitModule(LightningModule):
                 unprioritized_buffer_samples=unprioritized_buffer_samples,
                 cfm_samples=cfm_samples,
                 replay_buffer=self.buffer,
+                epoch=self.iter_num
             )
             
             #log training data
@@ -1030,6 +1037,7 @@ class DEMLitModule(LightningModule):
                 self.last_samples,
                 self.last_energies,
                 wandb_logger,
+                epoch=self.iter_num
             )
         '''
         if "data_0" in outputs:
@@ -1080,6 +1088,7 @@ class DEMLitModule(LightningModule):
                     samples,
                     self.energy_function(samples),
                     wandb_logger,
+                    epoch=self.iter_num
                 )
 
         final_samples = torch.cat(final_samples, dim=0)
@@ -1130,7 +1139,8 @@ class DEMLitModule(LightningModule):
         
         self.energy_function.log_on_epoch_end(
                 init_states, init_energies,
-                get_wandb_logger(self.loggers)
+                get_wandb_logger(self.loggers),
+                epoch=self.iter_num
             )
         
         self.buffer.add(init_states, init_energies.sum(-1))

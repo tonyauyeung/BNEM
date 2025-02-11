@@ -1,5 +1,4 @@
-_target_: dem.models.endem_module.ENDEMLitModule
-
+_target_: dem.models.bufferdem_module.BUFFERDEMLitModule
 optimizer:
   _target_: torch.optim.Adam
   _partial_: true
@@ -13,13 +12,9 @@ scheduler:
   factor: 0.1
   patience: 10
 
-
-
 defaults:
   - net:
       - mlp
-  - bootstrap_schedule:
-      - geometric
 
 lambda_weighter:
     _target_: dem.models.components.lambda_weighter.BasicLambdaWeighter
@@ -27,35 +22,23 @@ lambda_weighter:
     epsilon: 1e-3
 
 noise_schedule:
-    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.001
-
-bootstrap_from_checkpoint: True
-
-ema_beta: 0.95
+    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
+    #sigma_min: 0.0001
 
 buffer:
-  _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
+  _target_: dem.models.components.prioritised_replay_buffer.SimpleBufferVerbose
   dim: ${energy.dimensionality}
   max_length: 10000
   min_sample_length: 1000
   initial_sampler: null
   device: ${trainer.accelerator}
   sample_with_replacement: True
-  fill_buffer_during_init: False
   prioritize: False
-
-clipper_gen:
-  _target_: dem.models.components.clipper.Clipper
-  should_clip_scores: True
-  should_clip_log_rewards: False
-  max_score_norm: 1000
-  min_log_reward: null
 
 score_scaler: null
 
 num_init_samples: 1024
-num_estimator_mc_samples: 100
+num_estimator_mc_samples: 1000
 num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
@@ -72,7 +55,7 @@ compute_nll_on_train_data: false
 
 cfm_sigma: 0.0
 cfm_prior_std: ${energy.data_normalization_factor}
-use_otcfm: false
+use_otcfm: true
 prioritize_cfm_training_samples: false
 
 lr_scheduler_update_frequency: ${trainer.check_val_every_n_epoch}
@@ -88,7 +71,7 @@ use_richardsons: false
 cfm_loss_weight: 1.0
 use_ema: false
 use_exact_likelihood: True
-num_efficient_samples: 0  # 0 for using exact gradient computation for scores, >0 for approximation
+
 
 
 # initialize the buffer with samples from the prior
@@ -106,11 +89,12 @@ num_negative_time_steps: 100
 ais_steps: 0
 ais_dt: 0.1
 
-bootstrap_mc_samples: 80
-t0_regulizer_weight: 0.5
 
 #turn on the below 3 config for eval mode
 nll_with_cfm: false
-# train cfm only on train data and not dem
+# train cfm only on train ata and not dem
 debug_use_train_data: false
 logz_with_cfm: false
+
+diffusion_scale: 1.0
+

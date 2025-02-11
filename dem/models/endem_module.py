@@ -1,5 +1,5 @@
 import copy
-
+import os
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -272,7 +272,6 @@ class ENDEMLitModule(DEMLitModule):
         if self.iter_num > 0:
             self.reverse_sde = VEReverseSDE(self.net, self.noise_schedule, 
                                             self.energy_function,self.net.MH_sample)
-        
         energy_est = self.energy_estimator(samples, times, self.num_estimator_mc_samples).detach()
         predicted_energy = self.net.forward_e(times, samples)
         
@@ -492,6 +491,7 @@ class ENDEMLitModule(DEMLitModule):
             self._log_dist_total_var(prefix=prefix)
         elif self.energy_function.dimensionality <= 2:
             self._log_data_total_var(prefix=prefix)
+        torch.save(self.last_samples.detach().cpu().float(), os.path.join("traj_data/bnem_mw32", f"samples_{self.iter_num}.pt"))
 
 
 

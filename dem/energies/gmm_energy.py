@@ -112,6 +112,7 @@ class GMM(BaseEnergyFunction):
         cfm_samples=None,
         replay_buffer=None,
         prefix: str = "",
+        epoch=None
     ) -> None:
         if wandb_logger is None:
             return

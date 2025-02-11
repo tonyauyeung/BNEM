@@ -1,0 +1,22 @@
+_target_: dem.energies.aldp_energy.AldpBoltzmannEnergy
+
+dimensionality: 60
+
+config:
+  system:                             # Properties of molecular system
+    temperature: 300                  # Double, temperature of the system
+    energy_cut: 1.e+8                 # Double, energy level at which regularization shall be applied
+    energy_max: 1.e+20                # Double, maximum level at which energies will be clamped
+    n_threads: 32                     # Int, number of threads to be used, number of cores if null
+    transform: internal               # String, type of the transformation
+    shift_dih: False                  # Bool, flag whether to shift dihedral angles
+    env: implicit                     # String, environment of the molecule, can be implicit or vacuum
+    lj_smooth: True                  # Bool, flag whether to smooth the Lennard-Jones potential
+  data:
+    transform: data/aldp/position_min_energy.pt
+  
+test_data_path: data/aldp/test.pt
+val_data_path: data/aldp/val.pt
+
+data_normalization_factor: 1.0
+device: ${trainer.accelerator}

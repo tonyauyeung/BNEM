@@ -1,0 +1,52 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=example
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["aldp", "iDEM"]
+
+seed: 12345
+
+defaults:
+  - override /energy: aldp
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "aldp_efm"
+
+model:
+  net:
+    # hidden_size: 1024
+    hidden_layers: 5
+  noise_schedule:
+    sigma_max: 6.28
+
+  partial_prior:
+    _target_: dem.energies.base_prior.Prior
+    _partial_: true
+    dim: 60
+
+  clipper:
+    _target_: dem.models.components.clipper.Clipper
+    should_clip_scores: True
+    should_clip_log_rewards: False
+    max_score_norm: 1000.
+    min_log_reward: null
+
+  clipper_gen:
+    _target_: dem.models.components.clipper.Clipper
+    should_clip_scores: True
+    should_clip_log_rewards: False
+    max_score_norm: 1000.
+    min_log_reward: null
+
+  optimizer:
+    lr: 1e-3
+
+  # this has to be max 1000 since test_set is 1000
+  eval_batch_size: 1000
+  scheduler: null

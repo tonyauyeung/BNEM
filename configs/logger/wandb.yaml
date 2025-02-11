@@ -10,7 +10,7 @@ wandb:
   project: "workshop9_9"
   log_model: False # upload lightning ckpts
   prefix: "" # a string to put at the beginning of metric keys
-  entity: ${oc.env:WANDB_ENTITY} # set to name of your wandb team
+  entity: "Energy-basedDEM" # set to name of your wandb team
   group: ""
   tags: []
   job_type: ""

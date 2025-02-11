@@ -209,6 +209,7 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
         cfm_samples=None,
         replay_buffer=None,
         prefix: str = "",
+        epoch=None
     ) -> None:
         if latest_samples is None:
             return
