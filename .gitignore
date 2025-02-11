@@ -173,3 +173,4 @@ wandb/
 plots/
 *outputs/
 *.out
+plot_aldp/
