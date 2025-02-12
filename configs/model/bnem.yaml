@@ -1,4 +1,4 @@
-_target_: dem.models.endem_module.ENDEMLitModule
+_target_: dem.models.nem_module.NEMLitModule
 
 optimizer:
   _target_: torch.optim.Adam
@@ -28,7 +28,8 @@ lambda_weighter:
 
 noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.001
+    sigma_min: 0.0001
+    sigma_max: 1.0
 
 bootstrap_from_checkpoint: True
 
@@ -49,16 +50,18 @@ clipper_gen:
   _target_: dem.models.components.clipper.Clipper
   should_clip_scores: True
   should_clip_log_rewards: False
-  max_score_norm: 1000
+  max_score_norm: 1000.
   min_log_reward: null
 
 score_scaler: null
 
 num_init_samples: 1024
-num_estimator_mc_samples: 100
 num_samples_to_generate_per_epoch: 1024
 num_samples_to_sample_from_buffer: 512
 eval_batch_size: 1024
+num_estimator_mc_samples: 100
+bootstrap_mc_samples: 80
+t0_regulizer_weight: 0.5
 
 num_integration_steps: 1000
 nll_integration_method: dopri5
@@ -105,9 +108,6 @@ num_negative_time_steps: 100
 
 ais_steps: 0
 ais_dt: 0.1
-
-bootstrap_mc_samples: 80
-t0_regulizer_weight: 0.5
 
 #turn on the below 3 config for eval mode
 nll_with_cfm: false

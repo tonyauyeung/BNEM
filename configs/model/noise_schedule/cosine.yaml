@@ -1,0 +1,2 @@
+_target_: dem.models.components.noise_schedules.CosineNoiseSchedule
+sigma_max: 1.0

@@ -23,8 +23,9 @@ lambda_weighter:
     epsilon: 1e-3
 
 noise_schedule:
-    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
-    #sigma_min: 0.0001
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
+    sigma_min: 0.0001
+    sigma_max: 1.0
 
 buffer:
   _target_: dem.models.components.prioritised_replay_buffer.SimpleBuffer
