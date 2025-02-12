@@ -58,7 +58,7 @@ class GMM(BaseEnergyFunction):
         self.data_path_train = data_path_train
         self.data_path_val = data_path_val
 
-        self.name = "gmm"
+        self.name = "GMM"
         
         super().__init__(
             dimensionality=dimensionality,

@@ -179,10 +179,11 @@ class LennardJonesEnergy(BaseEnergyFunction):
         # self.data_path_train = get_original_cwd() + "/" + data_path_train
         # self.data_path_val = get_original_cwd() + "/" + data_path_val
 
-        if self.n_particles == 13:
-            self.name = "LJ13_efm"
-        elif self.n_particles == 55:
-            self.name = "LJ55"
+        # if self.n_particles == 13:
+        #     self.name = "LJ13"
+        # elif self.n_particles == 55:
+        #     self.name = "LJ55"
+        self.name = f"LJ{int(n_particles)}"
 
         self.device = device
 

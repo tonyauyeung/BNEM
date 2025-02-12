@@ -51,7 +51,7 @@ class ManyWellEnergy(BaseEnergyFunction):
         self.data_normalization_factor = data_normalization_factor
 
         self.device = device
-        self.name = "manywell"
+        self.name = f"MW{int(dimensionality)}"
 
         self.val_set_size = 1000
         self.test_set_size = 1000

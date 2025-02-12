@@ -82,10 +82,11 @@ class MultiDoubleWellEnergy(BaseEnergyFunction):
 
         self.data_from_efm = data_from_efm
 
-        if data_from_efm:
-            self.name = "DW4_EFM"
-        else:
-            self.name = "DW4_EACF"
+        # if data_from_efm:
+        #     self.name = "DW4_EFM"
+        # else:
+        #     self.name = "DW4_EACF"
+        self.name = f"DW{int(n_particles)}"
 
         if self.data_from_efm:
             if data_path_train is None:
