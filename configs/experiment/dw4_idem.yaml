@@ -13,7 +13,7 @@ seed: 12345
 logger:
   wandb:
     tags: ${tags}
-    group: "dw4_efm"
+    group: "dw4"
 
 defaults:
   - override /energy: dw4

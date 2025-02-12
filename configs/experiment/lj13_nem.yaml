@@ -1,0 +1,11 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=example
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+defaults:
+  - lj13_idem
+
+tags: ["LJ13", "NEM"]

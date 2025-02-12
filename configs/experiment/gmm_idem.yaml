@@ -19,6 +19,7 @@ logger:
 
 model:
   noise_schedule:
+    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
     sigma_max: 1.0
 
   partial_prior:
@@ -39,3 +40,5 @@ model:
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000
   scheduler: null
+  num_estimator_mc_samples: 100
+  num_integration_steps: 100
