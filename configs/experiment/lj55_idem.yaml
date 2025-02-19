@@ -17,6 +17,7 @@ logger:
 
 defaults:
   - override /energy: lj55
+  - override /model: dem
   - override /model/net: egnn
 
 data:

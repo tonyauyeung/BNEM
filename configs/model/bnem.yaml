@@ -53,6 +53,13 @@ clipper_gen:
   max_score_norm: 1000.
   min_log_reward: null
 
+clipper:
+  _target_: dem.models.components.clipper.Clipper
+  should_clip_scores: True
+  should_clip_log_rewards: False
+  max_score_norm: 1000.
+  min_log_reward: null
+
 score_scaler: null
 
 num_init_samples: 1024

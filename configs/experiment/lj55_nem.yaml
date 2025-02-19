@@ -7,5 +7,10 @@
 # this allows you to overwrite only specified parameters
 defaults:
   - lj55_idem
+  - override /model: nem
 
 tags: ["LJ55", "NEM"]
+
+model:
+  clipper:
+    max_score_norm: 1000.0

@@ -6,7 +6,9 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - lj55_idem
+  - lj55_nem
+  - override /model: bnem
+  - override /callbacks: bootstrap
 
 tags: ["LJ55", "BNEM"]
 
@@ -16,3 +18,8 @@ model:
       sigma_min: 0.5
       sigma_max: 4.0
     variance: 0.1
+
+  t0_regulizer_weight: 0.0
+
+  num_estimator_mc_samples: 1000
+  bootstrap_mc_samples: 500
