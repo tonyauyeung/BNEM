@@ -5,7 +5,7 @@
 
 # create micromamba environment
 conda env create -f environment.yaml
-conda activate dem
+conda activate bnem
 
 # install requirements
 pip install -r requirements.txt
@@ -13,22 +13,24 @@ pip install -r requirements.txt
 ```
 
 ## Run experiments
-To run an experiment, e.g., GMM with ENDEM, you can run on the command line
+To run an experiment and log it to WandB, e.g., GMM with NEM, you can run on the command line
 
 ```bash
-#model=dem
-#model=dem_en
-#model=endem
-#model=endem_bootstrap callbacks=bootstrap
-export WANDB_ENTITY=Energy-basedDEM
-python dem/train.py experiment=gmm_idem model=endem
+export WANDB_ENTITY=<your_wandb_entity>
+python dem/train.py experiment=gmm_nem model=nem
 ```
-you could modify `configs/logger/wandb.yaml` to specify the name of your project.
+you could modify `configs/logger/wandb.yaml` to customize your wandb.
 
+Here's the list of available models:
+    - dem: iDEM
+    - dem: iDEM with an energy parameterisation
+    - nem: NEM
+    - bnem: BNEM
+<!-- 
 To evaluate the sampled results for NLL and ESS, you need to modify the energy yaml file to your sampled datapoints:
 
 ```bash
-data_path_train: "/scratch/bq216/code/DEM/dem_results/logs/train/runs/2024-07-04_16-14-11/samples_100000.pt"
+data_path_train: "<your_save_path_for_generated_samples>/samples_100000.pt"
 data_path_val: ${energy.data_path_train}
 ```
 
@@ -45,4 +47,4 @@ logz_with_cfm: true
 At last, run:
 ```bash
 python dem/eval.py experiment=gmm_idem
-```
+``` -->
