@@ -22,6 +22,7 @@ python dem/train.py experiment=gmm_nem model=nem
 you could modify `configs/logger/wandb.yaml` to customize your wandb.
 
 Here's the list of available models:
+
     - dem: iDEM
     - dem: iDEM with an energy parameterisation
     - nem: NEM
