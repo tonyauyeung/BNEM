@@ -2,6 +2,8 @@ import torch
 import mdtraj
 import os
 import numpy as np
+from PIL import Image
+
 from lightning.pytorch.loggers import WandbLogger
 
 from dem.energies.base_energy_function import BaseEnergyFunction
@@ -82,8 +84,8 @@ class AldpBoltzmannEnergy(BaseEnergyFunction):
         x = x.requires_grad_().to(self.device)
         energy = self(x).sum()
         energy.backward()
-        #clip the gradient
-        grad_ = torch.clip(x.grad, -5, 5)
+        # #clip the gradient
+        # grad_ = torch.clip(x.grad, -5, 5)
         if batch_size is not None:
             grad_ = grad_.view(*batch_size, -1)
         return grad_
@@ -126,4 +128,15 @@ class AldpBoltzmannEnergy(BaseEnergyFunction):
                         iter=self.cur_epoch,
                         metric_dir=log_dir + '/metrics',
                         plot_dir=log_dir + '/plots')
+            marginal_angle = Image.open(os.path.join(log_dir + '/plots', 'marginals_%s_%07i.png' % ("angle", self.cur_epoch + 1)))
+            marginal_bond = Image.open(os.path.join(log_dir + '/plots', 'marginals_%s_%07i.png' % ("bond", self.cur_epoch + 1)))
+            marginal_dih = Image.open(os.path.join(log_dir + '/plots', 'marginals_%s_%07i.png' % ("dih", self.cur_epoch + 1)))
+            phi_psi = Image.open(os.path.join(log_dir + '/plots', '%s_%07i.png' % ("phi_psi", self.cur_epoch + 1)))
+            ramachandran = Image.open(os.path.join(log_dir + '/plots', '%s_%07i.png' % ("ramachandran", self.cur_epoch + 1)))
+
+            wandb_logger.log_image(f"marginal_angle", [marginal_angle])
+            wandb_logger.log_image(f"marginal_bond", [marginal_bond])
+            wandb_logger.log_image(f"marginal_dih", [marginal_dih])
+            wandb_logger.log_image(f"phi_psi", [phi_psi])
+            wandb_logger.log_image(f"ramachandran", [ramachandran])
             self.cur_epoch += 1

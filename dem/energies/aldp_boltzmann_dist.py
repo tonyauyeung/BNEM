@@ -200,33 +200,6 @@ class AldpBoltzmann(nn.Module, TargetDistribution):
         return {}
 
 
-
-# def get_aldp_target(config_path, device):
-
-#     with open(config_path, 'r') as stream:
-#         config = yaml.load(stream, yaml.FullLoader)
-
-#     # Target distribution
-#     transform_mode = 'mixed' if not 'transform' in config['system'] \
-#         else config['system']['transform']
-#     shift_dih = False if not 'shift_dih' in config['system'] \
-#         else config['system']['shift_dih']
-#     env = 'vacuum' if not 'env' in config['system'] \
-#         else config['system']['env']
-#     ind_circ_dih = [0, 1, 2, 3, 4, 5, 8, 9, 10, 13, 15, 16]
-#     target = AldpBoltzmann(data_path=config['data']['transform'],
-#                            temperature=config['system']['temperature'],
-#                            energy_cut=config['system']['energy_cut'],
-#                            energy_max=config['system']['energy_max'],
-#                            n_threads=config['system']['n_threads'],
-#                            transform=transform_mode,
-#                            ind_circ_dih=ind_circ_dih,
-#                            shift_dih=shift_dih,
-#                            lj_smooth=config['system']['lj_smooth'],
-#                            env=env)
-#     target = target.to(device)
-
-#     return target
 def get_aldp_target(config, device):
     # Target distribution
     transform_mode = 'mixed' if not 'transform' in config['system'] \
