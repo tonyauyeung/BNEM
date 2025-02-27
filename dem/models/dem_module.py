@@ -462,10 +462,10 @@ class DEMLitModule(LightningModule):
             if self.hparams.use_buffer:
                 iter_samples, _, _ = self.buffer.sample(self.num_samples_to_sample_from_buffer)
             else:
-                iter_samples = self.prior.sample(self.num_samples_to_sample_from_buffer)
-                # Uncomment for SM
-                # iter_samples = self.energy_function.sample_train_set(self.num_samples_to_sample_from_buffer)
-
+                # Training with ground truth data, which can be useful for sanity check
+                iter_samples = self.energy_function.sample_train_set(self.num_samples_to_sample_from_buffer, normalize=True)
+                # Uncomment for using prior-DEM or prior-(B)NEM
+                # iter_samples = self.prior.sample(self.num_samples_to_sample_from_buffer)
             
             times = torch.rand(
                 (self.num_samples_to_sample_from_buffer,), device=iter_samples.device

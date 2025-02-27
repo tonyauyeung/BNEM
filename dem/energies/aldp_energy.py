@@ -12,7 +12,7 @@ from dem.energies.aldp_utils import evaluate_aldp
 
 
 
-def load_data(target, data_path, num_data=10000, device='cpu'):
+def load_data(target, data_path, num_data=1000000, device='cpu'):
     if data_path[-2:] == 'h5':
         mdtraj_traj = mdtraj.load(data_path)
         data = torch.tensor(mdtraj_traj.xyz).float().to(device).view(-1, 66)
@@ -98,6 +98,9 @@ class AldpBoltzmannEnergy(BaseEnergyFunction):
         val_set = load_data(self.target, self.test_data_path, device=self.device)
         return val_set
     
+    def setup_train_set(self):
+        train_set = load_data(self.target, self.test_data_path, device=self.device)
+        return train_set
     
     def log_on_epoch_end(
             self, 
