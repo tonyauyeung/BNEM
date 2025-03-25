@@ -99,10 +99,6 @@ class GMM(BaseEnergyFunction):
             samples = self.unnormalize(samples)
         return self.gmm.log_prob(samples).unsqueeze(-1)
 
-    @property
-    def dimensionality(self):
-        return 2
-
     def log_on_epoch_end(
         self,
         latest_samples: torch.Tensor,
@@ -146,7 +142,8 @@ class GMM(BaseEnergyFunction):
 
             if latest_samples is not None:
                 fig, ax = plt.subplots()
-                ax.scatter(*latest_samples.detach().cpu().T)
+                # ax.scatter(*latest_samples.detach().cpu().T)
+                ax.scatter(*latest_samples[:, :2].detach().cpu().T)
 
                 wandb_logger.log_image(f"{prefix}generated_samples_scatter", [fig_to_image(fig)])
                 img = self.get_single_dataset_fig(latest_samples, "dem_generated_samples")
@@ -176,15 +173,16 @@ class GMM(BaseEnergyFunction):
         fig, ax = plt.subplots(1, 1, figsize=(8, 8))
 
         self.gmm.to("cpu")
-        plot_contours(
-            self.gmm.log_prob,
-            bounds=plotting_bounds,
-            ax=ax,
-            n_contour_levels=50,
-            grid_width_n_points=200,
-        )
+        if samples.shape[1] == 2:
+            plot_contours(
+                self.gmm.log_prob,
+                bounds=plotting_bounds,
+                ax=ax,
+                n_contour_levels=50,
+                grid_width_n_points=200,
+            )
 
-        plot_marginal_pair(samples, ax=ax, bounds=plotting_bounds)
+        plot_marginal_pair(samples[:, :2], ax=ax, bounds=plotting_bounds)
         ax.set_title(f"{name}")
 
         self.gmm.to(self.device)
@@ -195,28 +193,30 @@ class GMM(BaseEnergyFunction):
         fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
         self.gmm.to("cpu")
-        plot_contours(
-            self.gmm.log_prob,
-            bounds=plotting_bounds,
-            ax=axs[0],
-            n_contour_levels=50,
-            grid_width_n_points=200,
-        )
-
-        # plot dataset samples
-        plot_marginal_pair(samples, ax=axs[0], bounds=plotting_bounds)
-        axs[0].set_title("Buffer")
-
-        if gen_samples is not None:
+        if samples.shape[1] == 2:
             plot_contours(
                 self.gmm.log_prob,
                 bounds=plotting_bounds,
-                ax=axs[1],
+                ax=axs[0],
                 n_contour_levels=50,
                 grid_width_n_points=200,
             )
+
+        # plot dataset samples
+        plot_marginal_pair(samples[:, :2], ax=axs[0], bounds=plotting_bounds)
+        axs[0].set_title("Buffer")
+
+        if gen_samples is not None:
+            if samples.shape[1] == 2:
+                plot_contours(
+                    self.gmm.log_prob,
+                    bounds=plotting_bounds,
+                    ax=axs[1],
+                    n_contour_levels=50,
+                    grid_width_n_points=200,
+                )
             # plot generated samples
-            plot_marginal_pair(gen_samples, ax=axs[1], bounds=plotting_bounds)
+            plot_marginal_pair(gen_samples[:, :2], ax=axs[1], bounds=plotting_bounds)
             axs[1].set_title("Generated samples")
 
         # delete subplot
