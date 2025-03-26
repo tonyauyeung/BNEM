@@ -16,7 +16,7 @@ model:
     noise_scheduler:
       sigma_min: 0.5
       sigma_max: 4.0
-    variance: 0.1
+    variance: 0.4
 
   t0_regulizer_weight: 0.0
 
