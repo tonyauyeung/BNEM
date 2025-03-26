@@ -38,10 +38,11 @@ class GMM(BaseEnergyFunction):
             dim=dimensionality,
             n_mixes=n_mixes,
             loc_scaling=loc_scaling,
-            log_var_scaling=log_var_scaling,
+            log_var_scaling=log_var_scaling + np.log(dimensionality),
             use_gpu=use_gpu,
             true_expectation_estimation_n_samples=true_expectation_estimation_n_samples,
         )
+        self.log_var_scaling = log_var_scaling + np.log(dimensionality)
         self.n_particles = 1
         self.curr_epoch = 0
         self.device = device
@@ -98,6 +99,34 @@ class GMM(BaseEnergyFunction):
         if self.should_unnormalize:
             samples = self.unnormalize(samples)
         return self.gmm.log_prob(samples).unsqueeze(-1)
+    
+    def log_mode_coverage(self, samples: torch.Tensor, wandb_logger: Optional[WandbLogger] = None, prefix: str = "") -> int:
+        """
+        Logs and returns the number of GMM modes that are covered by the given samples.
+
+        Args:
+            samples (torch.Tensor): Sampled points of shape (N, D)
+            wandb_logger (WandbLogger, optional): If provided, logs to wandb
+            prefix (str, optional): Logging prefix
+
+        Returns:
+            int: Number of modes covered
+        """
+        
+        threshold = self.log_var_scaling * 2.0
+
+        mus = self.gmm.locs.to(samples.device)  # shape (n_mixes, D)
+        dists = torch.cdist(mus, samples)  # (n_mixes, N)
+        covered = (dists < threshold).any(dim=1)  # (n_mixes,)
+        num_modes_covered = covered.sum().item()
+
+        if wandb_logger is not None:
+            if len(prefix) > 0 and prefix[-1] != "/":
+                prefix += "/"
+            wandb_logger.log_scalar(f"{prefix}modes_covered", num_modes_covered)
+
+        return num_modes_covered
+
 
     def log_on_epoch_end(
         self,

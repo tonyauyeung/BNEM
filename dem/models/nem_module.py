@@ -391,7 +391,7 @@ class NEMLitModule(DEMLitModule):
                 prog_bar=False,
         )
         
-        full_loss = (self.t0_regulizer_weight * error_norms_t0 + energy_error_norm).sum(-1)
+        full_loss = (self.t0_regulizer_weight * error_norms_t0 + energy_error_norm * self.lambda_weighter(times)).sum(-1)
         if should_bootstrap:
             full_loss += u_loss
         

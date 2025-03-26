@@ -737,6 +737,16 @@ class DEMLitModule(LightningModule):
             on_epoch=True,
             prog_bar=True,
         )
+        
+        if hasattr(self.energy_function, 'log_mode_coverage'):
+            mode_coverage = self.energy_function.log_mode_coverage(generated_samples)
+            self.log(
+                f"{prefix}/mode_coverage",
+                mode_coverage,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+            )
 
     def _log_dist_w2(self, prefix="val"):
         if prefix == "test":
