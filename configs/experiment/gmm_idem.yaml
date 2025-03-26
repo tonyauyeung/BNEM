@@ -42,3 +42,4 @@ model:
   scheduler: null
   num_estimator_mc_samples: 100
   num_integration_steps: 100
+  t0_regulizer_weight: 0.5
