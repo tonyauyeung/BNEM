@@ -19,19 +19,19 @@ logger:
 
 model:
   noise_schedule:
-    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
-    sigma_max: 1.0
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
+    sigma_max: 3.0
 
   partial_prior:
     _target_: dem.energies.base_prior.Prior
     _partial_: true
-    dim: 2
+    dim: ${energy.dimensionality}
 
   clipper:
     _target_: dem.models.components.clipper.Clipper
     should_clip_scores: True
     should_clip_log_rewards: False
-    max_score_norm: 70.
+    max_score_norm: 1000.
     min_log_reward: null
 
   optimizer:
@@ -40,5 +40,5 @@ model:
   # this has to be max 1000 since test_set is 1000
   eval_batch_size: 1000
   scheduler: null
-  num_estimator_mc_samples: 100
-  num_integration_steps: 100
+  num_estimator_mc_samples: 1000
+  num_integration_steps: 1000

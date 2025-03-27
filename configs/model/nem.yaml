@@ -24,8 +24,8 @@ lambda_weighter:
 
 noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.0001
-    sigma_max: 1.0
+    sigma_min: 0.3
+    sigma_max: 3.0
 
 ema_beta: 0.95
 
@@ -105,7 +105,7 @@ use_buffer: true
 num_samples_to_save: 100000
 
 negative_time: false
-num_negative_time_steps: 100
+num_negative_time_steps: 1000
 
 ais_steps: 0
 ais_dt: 0.1

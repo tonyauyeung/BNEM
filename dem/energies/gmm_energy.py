@@ -1,4 +1,5 @@
 from typing import Optional
+from scipy.stats import chi2
 
 import matplotlib.pyplot as plt
 import torch
@@ -113,7 +114,7 @@ class GMM(BaseEnergyFunction):
             int: Number of modes covered
         """
         
-        threshold = self.log_var_scaling * 2.0
+        threshold = self.log_var_scaling * chi2.ppf(0.99, self.dimensionality)
 
         mus = self.gmm.locs.to(samples.device)  # shape (n_mixes, D)
         dists = torch.cdist(mus, samples)  # (n_mixes, N)

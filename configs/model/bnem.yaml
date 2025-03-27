@@ -28,8 +28,8 @@ lambda_weighter:
 
 noise_schedule:
     _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
-    sigma_min: 0.0001
-    sigma_max: 1.0
+    sigma_min: 0.3
+    sigma_max: 3.0
 
 bootstrap_from_checkpoint: True
 

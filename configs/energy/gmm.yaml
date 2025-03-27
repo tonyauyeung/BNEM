@@ -1,6 +1,6 @@
 _target_: dem.energies.gmm_energy.GMM
 
-dimensionality: 2
+dimensionality: 10
 n_mixes: 40
 loc_scaling: 40
 log_var_scaling: 1.0
