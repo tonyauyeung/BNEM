@@ -14,8 +14,8 @@ model:
   bootstrap_schedule:
     noise_scheduler:
       sigma_min: 0.3
-      sigma_max: 3.0
-    variance: 0.3
+      sigma_max: 5.0
+    variance: 0.5
 
   t0_regulizer_weight: 0.0
 
