@@ -24,7 +24,7 @@ you could modify `configs/logger/wandb.yaml` to customize your wandb.
 Here's the list of available models:
 
     - dem: iDEM
-    - dem: iDEM with an energy parameterisation
+    - dem_en: iDEM with an energy parameterisation
     - nem: NEM
     - bnem: BNEM
 <!-- 
