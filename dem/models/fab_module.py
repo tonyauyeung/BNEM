@@ -2,6 +2,7 @@ import time
 import copy
 import math
 from typing import Any, Dict, Optional
+import os
 
 import hydra
 import matplotlib.pyplot as plt
@@ -346,6 +347,9 @@ class FABLitModule(LightningModule):
         else:
             self._log_data_total_var(prefix=prefix)
         self.ais_sampler.transition_operator.set_eval_mode(False)
+        sample_path = f"traj_data/fab_{self.energy_function.name}"
+        os.makedirs(sample_path, exist_ok=True)
+        torch.save(self.last_samples.detach().cpu().float(), os.path.join(sample_path, f"samples_{self.iter_num}.pt"))
 
     def _log_energy_w2(self, prefix="val"):
         if prefix == "test":
