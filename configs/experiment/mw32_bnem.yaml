@@ -6,14 +6,14 @@
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 defaults:
-  - dw4_nem
+  - mw32_nem
   - override /callbacks: bootstrap
-  
-tags: ["DW4", "BNEM"]
+
+tags: ["MW32", "BNEM"]
 
 model:
   bootstrap_schedule:
     noise_scheduler:
-      sigma_min: 0.0001
-      sigma_max: 3.0
+      sigma_min: 0.001
+      sigma_max: 1.0
     variance: 0.1
