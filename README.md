@@ -38,6 +38,23 @@ Here's the list of available models:
     - dem_en: iDEM with an energy parameterisation
     - nem: NEM
     - bnem: BNEM
+
+## Citation
+
+If you find our paper, code, and/or data useful for your research, please cite our paper:
+
+```
+@misc{ouyang2025bnemboltzmannsamplerbased,
+      title={BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching}, 
+      author={RuiKang OuYang and Bo Qiang and Zixing Song and José Miguel Hernández-Lobato},
+      year={2025},
+      eprint={2409.09787},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2409.09787}, 
+}
+```
+
 <!-- 
 To evaluate the sampled results for NLL and ESS, you need to modify the energy yaml file to your sampled datapoints:
 
