@@ -1067,7 +1067,7 @@ class DEMLitModule(LightningModule):
         if self.energy_function.is_molecule:
            self._log_dist_w2(prefix="test")
            self._log_dist_total_var(prefix="test")
-        else:
+        elif self.energy_function.dimensionality <= 2:
             self._log_data_total_var(prefix="test")
 
         batch_size = 1000
