@@ -1,3 +1,14 @@
+# BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching
+
+
+[![Paper](https://img.shields.io/badge/paper-arxiv.2410.12456-B31B1B.svg)](https://arxiv.org/abs/2409.09787)
+
+This is the official repository of the paper [BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching](https://arxiv.org/abs/2409.09787).
+
+In this paper, we first introduce NEM, which targets the marginal energy estimator at each noise level based on the target/system energy. We then introduce BNEM, which targets energy estimators with smaller variance based on bootstrapping.
+
+![](./assets/pipeline.png)
+
 ## Installation
 
 
