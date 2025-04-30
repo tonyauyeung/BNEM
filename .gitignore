@@ -177,3 +177,5 @@ plot_aldp/
 *.png
 *.csv
 traj_data/
+/*.py
+/*.ipynb
