@@ -173,4 +173,8 @@ wandb/
 plots/
 *outputs/
 *.out
-*plot_aldp/
+plot_aldp/
+*ipynb
+*.png
+*.csv
+traj_data/
