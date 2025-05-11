@@ -55,6 +55,9 @@ If you find our paper, code, and/or data useful for your research, please cite o
 }
 ```
 
+## Credit
+
+Our codebase depends on the iDEM repo: https://github.com/jarridrb/DEM.
 <!-- 
 To evaluate the sampled results for NLL and ESS, you need to modify the energy yaml file to your sampled datapoints:
 
