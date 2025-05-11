@@ -1,0 +1,56 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=example
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+defaults:
+  - override /energy: dw4
+  - override /model/net: egnn
+
+tags: ["DW4", "hmc"]
+
+seed: 12345
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "DW4"
+
+model:
+  net:
+    n_particles: 4
+    n_layers: 3
+    hidden_nf: 128
+    n_dimension: 2
+
+  noise_schedule:
+    sigma_max: 3
+
+  partial_prior:
+    _target_: dem.energies.base_prior.MeanFreePrior
+    _partial_: true
+    n_particles: 4
+    spatial_dim: 2
+
+  clipper:
+    _target_: dem.models.components.clipper.Clipper
+    should_clip_scores: True
+    should_clip_log_rewards: False
+    max_score_norm: 20
+    min_log_reward: null
+
+  num_integration_steps: 1000
+
+  #hmc parameters
+  sample_pt: True
+  pt_params: 
+    step_size: 0.1
+    swap_interval: 10
+  
+  
+  num_samples_to_save: 1000
+
+trainer:
+  max_epochs: 1

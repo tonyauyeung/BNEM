@@ -44,6 +44,7 @@ class GMM(BaseEnergyFunction):
             true_expectation_estimation_n_samples=true_expectation_estimation_n_samples,
         )
         self.n_particles = 1
+        self.log_var_scaling = log_var_scaling
         self.curr_epoch = 0
         self.device = device
         self.plotting_buffer_sample_size = plotting_buffer_sample_size
@@ -113,7 +114,6 @@ class GMM(BaseEnergyFunction):
         Returns:
             int: Number of modes covered
         """
-        
         threshold = self.log_var_scaling * chi2.ppf(0.99, self.dimensionality)
 
         mus = self.gmm.locs.to(samples.device)  # shape (n_mixes, D)
