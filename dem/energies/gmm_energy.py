@@ -13,7 +13,7 @@ from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
 
 
-class GMM_FAB(torch.nn.Module):
+class GMM_target(torch.nn.Module):
     def __init__(self, dim, n_mixes, loc_scaling, log_var_scaling=0.1, seed=0,
                  n_test_set_samples=1000, device="cpu"):
         torch.nn.Module.__init__(self)
