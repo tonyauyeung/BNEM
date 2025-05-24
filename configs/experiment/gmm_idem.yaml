@@ -19,13 +19,13 @@ logger:
 
 model:
   noise_schedule:
-    _target_: dem.models.components.noise_schedules.CosineNoiseSchedule
+    _target_: dem.models.components.noise_schedules.GeometricNoiseSchedule
     sigma_max: 1.0
 
   partial_prior:
     _target_: dem.energies.base_prior.Prior
     _partial_: true
-    dim: 2
+    dim: ${energy.dimensionality}
 
   clipper:
     _target_: dem.models.components.clipper.Clipper
@@ -42,4 +42,3 @@ model:
   scheduler: null
   num_estimator_mc_samples: 100
   num_integration_steps: 100
-  t0_regulizer_weight: 0.5

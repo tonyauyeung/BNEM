@@ -7,6 +7,7 @@
 # this allows you to overwrite only specified parameters
 defaults:
   - gmm_nem
+  - override /callbacks: bootstrap
 
 tags: ["GMM", "BNEM"]
 
