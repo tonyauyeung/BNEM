@@ -12,6 +12,54 @@ from dem.models.components.replay_buffer import ReplayBuffer
 from dem.utils.logging_utils import fig_to_image
 
 
+class GMM_FAB(torch.nn.Module):
+    def __init__(self, dim, n_mixes, loc_scaling, log_var_scaling=0.1, seed=0,
+                 n_test_set_samples=1000, device="cpu"):
+        torch.nn.Module.__init__(self)
+        self.seed = seed
+        torch.manual_seed(self.seed)
+        self.n_mixes = n_mixes
+        self.n_test_set_samples = n_test_set_samples
+        mean = (torch.rand((n_mixes, dim)) - 0.5)*2 * loc_scaling
+        log_var = torch.ones((n_mixes, dim)) * log_var_scaling
+        self.register_buffer("cat_probs", torch.ones((n_mixes, )))
+        self.register_buffer("locs", mean)
+        self.register_buffer("scale_trils", torch.diag_embed(torch.nn.functional.softplus(log_var)))
+        self.device = device
+        self.to(self.device)
+        self.all_metric_plots = {
+            "marginal_pair": lambda samples, label, **kwargs: plt.scatter(samples[:, 0].detach().cpu(), samples[:, 1].detach().cpu(), label=label, **kwargs)
+        }
+
+    def to(self, device):
+        super().to(device)
+        self.device = device
+        return self
+    
+    @property
+    def distribution(self):
+        mix = torch.distributions.Categorical(self.cat_probs.to(self.device))
+        com = torch.distributions.MultivariateNormal(self.locs.to(self.device),
+                                                     scale_tril=self.scale_trils.to(self.device),
+                                                     validate_args=False)
+        return torch.distributions.MixtureSameFamily(mixture_distribution=mix,
+                                                     component_distribution=com,
+                                                     validate_args=False)
+    
+    @property
+    def test_set(self) -> torch.Tensor:
+        return self.sample((self.n_test_set_samples, ))
+    
+    def log_prob(self, x: torch.Tensor):
+        log_prob = self.distribution.log_prob(x)
+        mask = torch.zeros_like(log_prob)
+        mask[log_prob < -1e9] = - torch.tensor(float("inf"))
+        log_prob = log_prob + mask
+        return log_prob
+    
+    def sample(self, shape=(1,)):
+        return self.distribution.sample(shape)
+
 
 class GMM(BaseEnergyFunction):
     def __init__(
@@ -34,13 +82,14 @@ class GMM(BaseEnergyFunction):
     ):
         use_gpu = device != "cpu"
         torch.manual_seed(0)  # seed of 0 for GMM problem
-        self.gmm = gmm.GMM(
+        self.gmm = GMM_FAB(
             dim=dimensionality,
             n_mixes=n_mixes,
             loc_scaling=loc_scaling,
             log_var_scaling=log_var_scaling,
-            use_gpu=use_gpu,
-            true_expectation_estimation_n_samples=true_expectation_estimation_n_samples,
+            device=device
+            # use_gpu=use_gpu,
+            # true_expectation_estimation_n_samples=true_expectation_estimation_n_samples,
         )
         self.n_particles = 1
         self.curr_epoch = 0
