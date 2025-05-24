@@ -457,6 +457,9 @@ class PISLitModule(LightningModule):
             self._log_dist_w2(prefix=prefix)
         else:
             self._log_data_total_var(prefix=prefix)
+        sample_path = f"traj_data/pis_{self.energy_function.name}"
+        os.makedirs(sample_path, exist_ok=True)
+        torch.save(self.last_samples.detach().cpu().float(), os.path.join(sample_path, f"samples_{self.iter_num}.pt"))
 
     def eval_step(self, prefix: str, batch: torch.Tensor, batch_idx: int) -> None:
         """Perform a single eval step on a batch of data from the validation set.

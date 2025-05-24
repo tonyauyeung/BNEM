@@ -3,6 +3,7 @@ import copy
 import math
 from typing import Any, Dict, Optional
 import os
+import tqdm
 
 import hydra
 import matplotlib.pyplot as plt
@@ -159,6 +160,11 @@ class DEMLitModule(LightningModule):
         sample_noise=False,
         clean_for_w2=True,
         use_tweedie=False,
+        sample_hmc=False,
+        sample_pt=False,
+        hmc_params=None,
+        pt_params=None,
+        **kwargs: Any,
     ) -> None:
         """Initialize a `MNISTLitModule`.
 
@@ -357,6 +363,11 @@ class DEMLitModule(LightningModule):
         self.iden_t = iden_t
         self.sample_noise = sample_noise
         self.clean_for_w2 = clean_for_w2
+        
+        self.sample_hmc = sample_hmc
+        self.sample_pt = sample_pt
+        self.hmc_params = hmc_params
+        self.pt_params = pt_params
         
         self.iter_num = 0
 
@@ -564,16 +575,26 @@ class DEMLitModule(LightningModule):
     ) -> torch.Tensor:
         num_samples = num_samples or self.num_samples_to_generate_per_epoch
 
-        samples = self.prior.sample(num_samples)
-        #self.EMA.step_ema(self.ema_model, self.net)
-        return self.integrate(
-            reverse_sde=reverse_sde,
-            samples=samples,
-            reverse_time=True,
-            return_full_trajectory=return_full_trajectory,
-            diffusion_scale=diffusion_scale,
-            negative_time=negative_time,
-        )
+        if not self.sample_hmc and not self.sample_pt:
+            samples = self.prior.sample(num_samples)
+            #self.EMA.step_ema(self.ema_model, self.net)
+            return self.integrate(
+                reverse_sde=reverse_sde,
+                samples=samples,
+                reverse_time=True,
+                return_full_trajectory=return_full_trajectory,
+                diffusion_scale=diffusion_scale,
+                negative_time=negative_time,
+            )
+        elif self.sample_hmc:
+            return self.run_hmc(n_samples=num_samples, n_steps=self.num_integration_steps,
+                                **self.hmc_params)
+        elif self.sample_pt:
+            return self.run_parallel_tempering(n_samples=num_samples, n_steps=self.num_integration_steps,
+                               **self.pt_params)
+        else:
+            raise ValueError("Either HMC or PT should be selected for sampling.")
+                
 
     def integrate(
         self,
@@ -699,6 +720,16 @@ class DEMLitModule(LightningModule):
             on_epoch=True,
             prog_bar=True,
         )
+        if hasattr(self.energy_function, 'log_mode_coverage'):
+            generated_samples = self.energy_function.unnormalize(generated_samples)
+            mode_coverage = self.energy_function.log_mode_coverage(generated_samples)
+            self.log(
+                f"{prefix}/mode_coverage",
+                mode_coverage,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+            )
     
     def _log_data_w2(self, prefix="val"):
         if prefix == "test":
@@ -1067,7 +1098,7 @@ class DEMLitModule(LightningModule):
         if self.energy_function.is_molecule:
            self._log_dist_w2(prefix="test")
            self._log_dist_total_var(prefix="test")
-        else:
+        elif self.energy_function.dimensionality <= 2:
             self._log_data_total_var(prefix="test")
 
         batch_size = 1000
@@ -1104,6 +1135,106 @@ class DEMLitModule(LightningModule):
         path2 = f"{self.energy_function.name}/samples_{self.hparams.version}_{self.num_samples_to_save}.pt"
         torch.save(final_samples, path2)
         print(f"Saving samples to {path2}")
+            
+    @torch.no_grad()
+    def run_parallel_tempering(self, 
+                            n_samples=1000,
+                            n_steps=1000, 
+                            swap_interval=10, 
+                            step_size=0.1):
+        # Initialize
+        temperatures = torch.tensor(np.geomspace(0.5, 5.0, n_samples), device=self.device)
+        states = self.prior.sample(n_samples).to(self.device)  # (n_samples, dim)
+        
+        
+        def potential_energy(x):
+            # Should return shape (n_samples,)
+            perparticle_energy =  -self.energy_function(x).squeeze()
+            if self.energy_function.is_molecule:
+                return perparticle_energy.sum(dim=1)  # shape: (n_samples,)
+            else:
+                return perparticle_energy
+        state_energies = potential_energy(states)  # (n_samples,)
+        
+
+        for step in tqdm.tqdm(range(n_steps), desc="PT Sampling", leave=False):
+            # Local proposals
+            proposals = states + torch.randn_like(states) * step_size
+            E_current = state_energies
+            E_proposal = potential_energy(proposals)        # (n_samples,)
+            delta_E = E_proposal - E_current                # (n_samples,)
+            accept_prob = torch.exp(-delta_E / temperatures)
+            accepts = torch.rand(n_samples, device=self.device) < accept_prob
+            states = torch.where(accepts[:, None], proposals, states)  # broadcast mask
+            state_energies = torch.where(accepts, E_proposal, E_current)  # update energies
+
+            # Replica exchange
+            if step % swap_interval == 0:
+                for i in range(n_samples - 1):
+                    x_i, x_j = states[i], states[i+1]
+                    E_i, E_j = state_energies[i], state_energies[i+1]
+                    T_i, T_j = temperatures[i], temperatures[i+1]
+                    delta = (1.0 / T_i - 1.0 / T_j) * (E_j - E_i)
+                    if torch.rand(1).item() < torch.exp(delta):
+                        states[i], states[i+1] = x_j, x_i  # swap
+                        state_energies[i], state_energies[i+1] = E_j, E_i  # swap energies
+
+        
+        return states
+
+
+    @torch.no_grad()
+    def run_hmc(
+        self,
+        n_samples=1000,
+        n_steps=1000,
+        step_size=0.1,
+        n_leapfrog=10,
+        mass=1.0,
+    ):
+        def potential_energy(x):
+            # Should return shape (n_samples,)
+            perparticle_energy =  -self.energy_function(x).squeeze()
+            if self.energy_function.is_molecule:
+                return perparticle_energy.sum(dim=1)  # shape: (n_samples,)
+            else:
+                return perparticle_energy
+
+        def kinetic_energy(p):
+            return 0.5 * (p**2 / mass).sum(dim=1)  # shape: (n_samples,)
+
+        # Initialize positions
+        x = self.prior.sample(n_samples).to(self.device)
+
+        for _ in tqdm.tqdm(range(n_steps), desc="HMC Sampling", leave=False):
+            x_old = x.clone()
+            p = torch.randn_like(x) * mass**0.5
+            current_p = p.clone()
+
+            # Leapfrog integration
+            p = p + 0.5 * step_size * self.energy_function.score(x)
+            for i in range(n_leapfrog):
+                x = x + step_size * p / mass
+                if i != n_leapfrog - 1:
+                    p = p + step_size * self.energy_function.score(x)
+            p = p + 0.5 * step_size * self.energy_function.score(x)
+            p = -p  # momentum flip
+
+            # Hamiltonians
+            U_current = potential_energy(x_old)
+            K_current = kinetic_energy(current_p)
+            U_proposed = potential_energy(x)
+            K_proposed = kinetic_energy(p)
+
+            # Metropolis-Hastings acceptance
+            log_accept_prob = (U_current + K_current) - (U_proposed + K_proposed)
+            uniform_sample = torch.rand(n_samples, device=x.device).log()
+            accept = log_accept_prob > uniform_sample
+
+            # Accept/reject step
+            x = torch.where(accept[:, None], x, x_old)
+        return x
+
 
     def setup(self, stage: str) -> None:
         """Lightning hook that is called at the beginning of fit (train + validate), validate,

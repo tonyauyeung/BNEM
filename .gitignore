@@ -152,7 +152,6 @@ dmypy.json
 
 # Lightning-Hydra-Template
 configs/local/default.yaml
-/data/
 /logs/
 .env
 
@@ -173,4 +172,10 @@ wandb/
 plots/
 *outputs/
 *.out
-*plot_aldp/
+plot_aldp/
+*ipynb
+*.png
+*.csv
+traj_data/
+/*.py
+/*.ipynb
