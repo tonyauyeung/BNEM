@@ -83,7 +83,7 @@ class GMM(BaseEnergyFunction):
     ):
         use_gpu = device != "cpu"
         torch.manual_seed(0)  # seed of 0 for GMM problem
-        self.gmm = GMM_FAB(
+        self.gmm = GMM_target(
             dim=dimensionality,
             n_mixes=n_mixes,
             loc_scaling=loc_scaling,
