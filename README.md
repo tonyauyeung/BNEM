@@ -1,7 +1,8 @@
 # BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching
 
 
-[![Paper](https://img.shields.io/badge/paper-arxiv.2410.12456-B31B1B.svg)](https://arxiv.org/abs/2409.09787)
+[![arXiv](https://img.shields.io/badge/paper-arxiv.2410.12456-B31B1B.svg)](https://arxiv.org/abs/2409.09787)
+[![TMLR](https://img.shields.io/badge/paper-TMLR-blue.svg)](https://openreview.net/forum?id=ZZktU0U6Pu)
 
 This is the official repository of the paper [BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching](https://arxiv.org/abs/2409.09787).
 
@@ -46,7 +47,7 @@ If you find our paper, code, and/or data useful for your research, please cite o
 ```
 @misc{ouyang2025bnemboltzmannsamplerbased,
       title={BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching}, 
-      author={RuiKang OuYang and Bo Qiang and Zixing Song and José Miguel Hernández-Lobato},
+      author={RuiKang OuYang and Bo Qiang and José Miguel Hernández-Lobato},
       year={2025},
       eprint={2409.09787},
       archivePrefix={arXiv},
