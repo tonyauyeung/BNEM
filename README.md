@@ -1,8 +1,7 @@
 # BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching
 
-
-[![arXiv](https://img.shields.io/badge/paper-arxiv.2410.12456-B31B1B.svg)](https://arxiv.org/abs/2409.09787)
-[![TMLR](https://img.shields.io/badge/paper-TMLR-blue.svg)](https://openreview.net/forum?id=ZZktU0U6Pu)
+[![TMLR 2026](https://img.shields.io/badge/TMLR-2026-blue.svg)](#)
+[![arXiv](https://img.shields.io/badge/arXiv-2409.09787-b31b1b.svg)](https://arxiv.org/abs/2409.09787)
 
 This is the official repository of the paper [BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching](https://arxiv.org/abs/2409.09787).
 
