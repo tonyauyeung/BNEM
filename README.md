@@ -44,10 +44,10 @@ Here's the list of available models:
 If you find our paper, code, and/or data useful for your research, please cite our paper:
 
 ```
-@misc{ouyang2025bnemboltzmannsamplerbased,
+@misc{ouyang2026bnemboltzmannsamplerbased,
       title={BNEM: A Boltzmann Sampler Based on Bootstrapped Noised Energy Matching}, 
       author={RuiKang OuYang and Bo Qiang and José Miguel Hernández-Lobato},
-      year={2025},
+      year={2026},
       eprint={2409.09787},
       archivePrefix={arXiv},
       primaryClass={cs.LG},
